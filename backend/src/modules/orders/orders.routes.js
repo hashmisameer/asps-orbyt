@@ -28,7 +28,9 @@ ordersRouter.get('/next-numbers', can(FEATURE, 'view'), asyncHandler(async (req,
 }));
 
 ordersRouter.get('/', can(FEATURE, 'view'), asyncHandler(async (req, res) => {
-  res.json(await orders.listOrders(req.user.companyId, req.query.search));
+  res.json(await orders.listOrders(req.user.companyId, {
+    search: req.query.search, brandId: req.query.brandId, categoryId: req.query.categoryId, styleId: req.query.styleId
+  }));
 }));
 
 ordersRouter.post('/', can(FEATURE, 'create'), asyncHandler(async (req, res) => {

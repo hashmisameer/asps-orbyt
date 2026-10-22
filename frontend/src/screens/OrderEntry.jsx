@@ -218,7 +218,7 @@ export default function OrderEntry({ active, onNotice }) {
     setFindOpen(false);
   }
 
-  // Keyboard: F2 = new, F3 = find, Ctrl+S = save (only while this tab is on screen)
+  // Keyboard: F2 = new, F3 = search, Ctrl+S = save (only while this tab is on screen)
   useEffect(() => {
     if (!active) return undefined;
     const onKey = (e) => {
@@ -240,7 +240,7 @@ export default function OrderEntry({ active, onNotice }) {
 
   return (
     <div className="screen">
-      {findOpen && <FindOrders onOpen={openOrder} onClose={() => setFindOpen(false)} />}
+      {findOpen && <FindOrders lookups={lookups} onOpen={openOrder} onClose={() => setFindOpen(false)} />}
       <div className="screen-head">
         <h1 className="screen-title">Order entry</h1>
         <span className={`chip ${status[1]}`}>{status[0]}</span>
@@ -249,7 +249,7 @@ export default function OrderEntry({ active, onNotice }) {
 
       <div className="toolbar">
         <button type="button" className="tb" onClick={startNew}>+ New (F2)</button>
-        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Find (F3)</button>
+        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search (F3)</button>
         <button type="button" className="tb tb-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save (Ctrl+S)'}</button>
         <span className="tb-sep" aria-hidden="true" />
         <button type="button" className="tb tb-soon" title="Coming in a later phase" onClick={() => onNotice('Print is coming in a later phase.')}>Print</button>

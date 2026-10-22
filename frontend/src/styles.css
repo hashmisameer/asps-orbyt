@@ -201,3 +201,7 @@ a { color: var(--teal); }
 .find-row:focus { outline: none; }
 .og select.ci { min-width: 92px; }
 .og input.ci[aria-label^="Buyer PO"] { min-width: 130px; }
+.find-filters { display: grid; grid-template-columns: 2fr 1fr 1fr 1.4fr auto; gap: 10px; align-items: end; }
+.find-clear { height: 32px; }
+.find-panel { width: min(1100px, 100%); }
+.find-table { min-width: 980px; }

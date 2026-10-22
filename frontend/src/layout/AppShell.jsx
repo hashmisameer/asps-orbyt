@@ -111,7 +111,7 @@ export default function AppShell({ session, onLogout, children }) {
               </div>
             </div>
           </section>
-        ) : children}
+        ) : (children ?? null)}
       </main>
 
       <footer className="statusbar">

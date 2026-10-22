@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, getToken, clearToken } from './api.js';
 import Login from './pages/Login.jsx';
-import Home from './pages/Home.jsx';
 import AppShell from './layout/AppShell.jsx';
 
 export default function App() {
@@ -27,8 +26,6 @@ export default function App() {
   if (!session) return <Login onSignedIn={setSession} />;
 
   return (
-    <AppShell session={session} onLogout={logout}>
-      <Home session={session} />
-    </AppShell>
+    <AppShell session={session} onLogout={logout} />
   );
 }

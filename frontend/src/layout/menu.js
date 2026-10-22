@@ -3,5 +3,11 @@
 
 // Screens that are built. key = feature code from the server, value = screen id used by AppShell.
 export const READY_SCREENS = {
-  'order.entry': 'orderEntry'
+  'order.entry': 'orderEntry',
+  'order.costing': 'costing',
+  'masters.buyer': 'buyer',
+  'masters.season': 'season',
+  'masters.currency': 'currency',
+  'masters.item_group': 'itemGroup',
+  'masters.item': 'item'
 };

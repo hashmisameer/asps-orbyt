@@ -7,6 +7,8 @@ import { authRouter } from './modules/auth/auth.routes.js';
 import { companyRouter } from './modules/companies/company.routes.js';
 import { ordersRouter } from './modules/orders/orders.routes.js';
 import { ownerRouter } from './modules/owner/owner.routes.js';
+import { mastersRouter } from './modules/masters/masters.routes.js';
+import { costingRouter } from './modules/costing/costing.routes.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -27,6 +29,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/companies', companyRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/owner', ownerRouter);
+app.use('/api/masters', mastersRouter);
+app.use('/api/costing', costingRouter);
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));
 app.use(errorHandler);

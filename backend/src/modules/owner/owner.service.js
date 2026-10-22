@@ -183,6 +183,9 @@ export async function createCompany(owner, body) {
       `INSERT INTO financial_years (company_id, label, short_label, start_date, end_date, is_current) VALUES ($1, $2, $3, $4, $5, TRUE)`,
       [id, fy.label, fy.short, fy.start, fy.end]);
     await saveAccess(db, id, catalog, modules, features);
+    await db.query(
+      `INSERT INTO currencies (company_id, code, name, rate_to_inr)
+       VALUES ($1, 'INR', 'Indian rupee', 1), ($1, 'USD', 'US dollar', 84), ($1, 'EUR', 'Euro', 91), ($1, 'GBP', 'British pound', 109)`, [id]);
     const roleId = (await db.query(`INSERT INTO roles (company_id, name, is_admin, description) VALUES ($1, 'Admin', TRUE, 'Company head: manages users and roles') RETURNING id`, [id])).rows[0].id;
     await db.query(
       `INSERT INTO users (company_id, role_id, default_unit_id, username, full_name, designation, password_hash)

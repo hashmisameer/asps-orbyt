@@ -2,10 +2,18 @@ import { useEffect, useState } from 'react';
 import { OrbitMark, Wordmark } from '../components/Logo.jsx';
 import { READY_SCREENS } from './menu.js';
 import OrderEntry from '../screens/OrderEntry.jsx';
+import Costing from '../screens/Costing.jsx';
+import SimpleMaster from '../screens/SimpleMaster.jsx';
 
 // Built screens: id -> component, tab title and breadcrumb
 const SCREENS = {
-  orderEntry: { component: OrderEntry, title: 'Order entry', crumb: 'Order › Order entry' }
+  orderEntry: { component: OrderEntry, title: 'Order entry', crumb: 'Order › Order entry' },
+  costing: { component: Costing, title: 'Costing', crumb: 'Order › Costing' },
+  buyer: { component: SimpleMaster, props: { kind: 'buyer' }, title: 'Buyer', crumb: 'Masters › Buyer' },
+  season: { component: SimpleMaster, props: { kind: 'season' }, title: 'Season', crumb: 'Masters › Season' },
+  currency: { component: SimpleMaster, props: { kind: 'currency' }, title: 'Currency', crumb: 'Masters › Currency' },
+  itemGroup: { component: SimpleMaster, props: { kind: 'item_group' }, title: 'Summary items', crumb: 'Masters › Item group' },
+  item: { component: SimpleMaster, props: { kind: 'item' }, title: 'Items', crumb: 'Masters › Item master' }
 };
 
 const Icon = {
@@ -160,7 +168,7 @@ export default function AppShell({ session, onLogout }) {
           const Screen = SCREENS[id].component;
           return (
             <div key={id} style={{ display: !menuOpen && active === id ? 'contents' : 'none' }}>
-              <Screen session={session} active={!menuOpen && active === id} onNotice={setNotice} />
+              <Screen {...(SCREENS[id].props || {})} session={session} active={!menuOpen && active === id} onNotice={setNotice} />
             </div>
           );
         })}

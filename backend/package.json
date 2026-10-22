@@ -12,7 +12,8 @@
     "seed:orders": "node src/db/seed-order-masters.js",
     "seed:owner": "node src/db/seed-owner.js",
     "reset-admin": "node src/db/reset-admin.js",
-    "check-logins": "node src/db/check-logins.js"
+    "check-logins": "node src/db/check-logins.js",
+    "test-login": "node src/db/test-login.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

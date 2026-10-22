@@ -48,6 +48,32 @@ async function seed() {
       await db.query('INSERT INTO colours (company_id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING', [cid, name]);
     }
 
+    // Sample buyers and seasons for the Costing screen (tables exist from migration 005)
+    for (const [code, name, country] of [['NXT', 'Next Retail Ltd', 'United Kingdom'], ['MNS', 'Marks & Spencer', 'United Kingdom'], ['ZLD', 'Zalando SE', 'Germany']]) {
+      await db.query('INSERT INTO buyers (company_id, code, name, country) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING', [cid, code, name, country]);
+    }
+    for (const name of ['Spring Summer', 'Autumn Winter', 'Holiday']) {
+      await db.query('INSERT INTO seasons (company_id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING', [cid, name]);
+    }
+
+    // Sample summary items and detail items for the Costing item picker (tables from migration 006)
+    const GROUPS = [
+      ['fabric', 'EXPORT PURCHASE FABRIC', 'MTR', [['AS/ALGARVE/NAVY', 'Main', 58], ['AS/ALGARVE/MID GREEN', 'Main', 58], ['AS/ALGARVE+TILIA/STONE GREY', 'Contrast', 56], ['CRAIG/FABRIC', 'Lining', 44]]],
+      ['fabric', 'DOMESTIC PURCHASE FABRIC', 'MTR', [['POCKETING 30S WHITE', 'Pocketing', 44], ['COTTON POPLIN 40S', 'Main', 58]]],
+      ['trims', 'BUTTONS', 'PCS', [['BUTTON 18L 4 HOLE', null, null], ['BUTTON 24L SHANK', null, null]]],
+      ['trims', 'LABELS', 'PCS', [['MAIN LABEL WOVEN', null, null], ['CARE LABEL PRINTED', null, null]]],
+      ['packing', 'POLY BAGS', 'PCS', [['POLY BAG 12X16', null, null]]],
+      ['packing', 'CARTONS', 'PCS', [['CARTON 5 PLY 60X40X40', null, null]]]
+    ];
+    for (const [type, gname, uom, items] of GROUPS) {
+      await db.query('INSERT INTO item_groups (company_id, item_type, name, uom) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING', [cid, type, gname, uom]);
+      const gid = (await db.query('SELECT id FROM item_groups WHERE company_id = $1 AND item_type = $2 AND lower(name) = lower($3)', [cid, type, gname])).rows[0].id;
+      for (const [name, nature, width] of items) {
+        await db.query('INSERT INTO items (company_id, group_id, name, uom, item_nature, width) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING',
+          [cid, gid, name, uom, nature, width]);
+      }
+    }
+
     for (const [name, sizes] of SIZE_RANGES) {
       await db.query('INSERT INTO size_ranges (company_id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING', [cid, name]);
       const rid = (await db.query('SELECT id FROM size_ranges WHERE company_id = $1 AND lower(name) = lower($2)', [cid, name])).rows[0].id;
@@ -56,7 +82,7 @@ async function seed() {
       }
     }
   });
-  console.log('Sample order masters are ready (brands, categories, styles, colours, size ranges).');
+  console.log('Sample order masters are ready (brands, categories, styles, colours, size ranges, buyers, seasons, items).');
   await pool.end();
 }
 

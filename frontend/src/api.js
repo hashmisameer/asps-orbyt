@@ -16,9 +16,23 @@ export function clearToken() {
   try { localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ }
 }
 
-export async function api(path, { method = 'GET', body } = {}) {
+// The owner console (/owner) keeps its own login, separate from the client ERP login
+const OWNER_KEY = 'orbyt_owner_token';
+export function getOwnerToken() {
+  try { return sessionStorage.getItem(OWNER_KEY); } catch { return null; }
+}
+export function saveOwnerToken(token) {
+  try { sessionStorage.setItem(OWNER_KEY, token); } catch { /* ignore */ }
+}
+export function clearOwnerToken() {
+  try { sessionStorage.removeItem(OWNER_KEY); } catch { /* ignore */ }
+}
+export const ownerApi = (path, options = {}) => request(`/owner${path}`, options, getOwnerToken());
+
+export const api = (path, options = {}) => request(path, options, getToken());
+
+async function request(path, { method = 'GET', body } = {}, token) {
   const headers = { 'Content-Type': 'application/json' };
-  const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   let res;
   try {

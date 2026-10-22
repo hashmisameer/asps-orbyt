@@ -10,6 +10,7 @@ export function requireAuth(req, _res, next) {
   if (!token) return next(new AppError(401, 'Sign in to continue.'));
   try {
     const payload = jwt.verify(token, env.jwtSecret);
+    if (payload.scope === 'owner') return next(new AppError(401, 'Sign in to continue.'));   // owner tokens only open the owner console
     req.user = { id: Number(payload.sub), companyId: Number(payload.cid), unitId: payload.uid ? Number(payload.uid) : null };
     next();
   } catch {

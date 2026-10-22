@@ -18,5 +18,9 @@ export const env = {
   defaultCompanyCode: process.env.DEFAULT_COMPANY_CODE || '',
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   seedAdminUsername: process.env.SEED_ADMIN_USERNAME || 'admin',
-  seedAdminPassword: process.env.SEED_ADMIN_PASSWORD || ''
+  seedAdminPassword: process.env.SEED_ADMIN_PASSWORD || '',
+  // ORBYT owner (super admin) login, created by `npm run seed:owner`
+  ownerUsername: process.env.OWNER_USERNAME || 'owner',
+  ownerName: process.env.OWNER_NAME || 'ORBYT owner',
+  ownerPassword: process.env.OWNER_PASSWORD || ''
 };

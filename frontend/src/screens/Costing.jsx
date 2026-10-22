@@ -1,5 +1,5 @@
 // Costing screen: cost of one garment for a style or an order line.
-// Header on top, one card per cost section (click to see its lines), totals bar fixed at the bottom.
+// Header on top (with base and total amount), one card per cost section; click a card to see its lines.
 // Amounts are worked out here as you type and worked out again by the server on save.
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
@@ -59,6 +59,7 @@ export default function Costing({ active, session }) {
   const [header, setHeader] = useState(blankHeader());
   const [lines, setLines] = useState([]);
   const [tab, setTab] = useState('fabric');             // section whose lines are shown
+  const [more, setMore] = useState(false);               // show the less-used header fields
   const [picker, setPicker] = useState(null);            // section whose item picker is open
   const [findOpen, setFindOpen] = useState(false);
   const [viewing, setViewing] = useState(null);          // an older revision shown read-only
@@ -219,7 +220,7 @@ export default function Costing({ active, session }) {
       {picker && <ItemPicker section={picker} canCreateItem={canCreateItem} onClose={() => setPicker(null)} onAdd={(list) => { addLines(picker, list); setPicker(null); }} />}
 
       <div className="screen-head">
-        <h1 className="screen-title">Costing</h1>
+        <h1 className="screen-title">Costing{saved && <span className="doc-no">{saved.costingNo}</span>}</h1>
         <span className={`chip ${status[1]}`}>{status[0]}</span>
         <span className="hint" style={{ marginLeft: 'auto' }}>
           {saved ? `${saved.costingNo} · Revision ${viewing || saved.revision} · ${fmtDate(saved.costingDate)}` : <>Fields marked <span className="req">*</span> are required</>}
@@ -255,10 +256,6 @@ export default function Costing({ active, session }) {
       <section className="panel">
         <div className="panel-head">COSTING DETAILS</div>
         <div className="form-grid cost-head">
-          <label className="f"><span>Costing no.</span><span className="ro">{saved ? saved.costingNo : 'Given on save'}</span></label>
-          <label className="f" title="Revision goes up by 1 on every save; date of the latest save"><span>Revision / date</span>
-            <span className="ro">{saved ? `${viewing || saved.revision} · ${fmtDate(saved.costingDate)}` : '—'}</span>
-          </label>
           <label className="f" title="Initial: first costing. Final: shows in BOM (needs Approve). Actual: a closed Final costing; only Actual can be deleted.">
             <span>Costing type <span className="req">*</span></span>
             <select className="inp" disabled={readOnly} value={header.type} onChange={e => setH({ type: e.target.value })}>
@@ -292,12 +289,6 @@ export default function Costing({ active, session }) {
             {readOnly ? <span className="ro">{fmtDate(header.deliveryDate)}</span>
               : <DateInput ariaLabel="Delivery date" value={header.deliveryDate} onChange={v => setH({ deliveryDate: v })} />}
           </label>
-          <div className="f"><span>Season / Year</span>
-            <div className="pair">
-              {sel('seasonId', lookups.seasons.map(s => ({ id: s.id, label: s.name })), 'season', { placeholder: 'Season' })}
-              {sel('year', lookups.years.map(y => ({ id: y, label: String(y) })), 'year', { placeholder: 'Year' })}
-            </div>
-          </div>
           <label className="f" title="Currency the buyer pays in"><span>Currency <span className="req">*</span></span>
             {sel('currencyId', lookups.currencies.map(c => ({ id: c.id, label: `${c.code} · ${c.name}` })), 'currency', { onPick: pickCurrency })}
           </label>
@@ -305,9 +296,28 @@ export default function Costing({ active, session }) {
             <input className="inp num-inp" inputMode="decimal" disabled={readOnly} value={header.conversionRate} onChange={e => setH({ conversionRate: e.target.value })} />
           </label>
 
-          <label className="f span-row"><span>Description</span>
-            <input className="inp" disabled={readOnly} maxLength={500} value={header.description} onChange={e => setH({ description: e.target.value })} placeholder="e.g. First costing as per tech pack" />
+          <label className="f" title="Cost of one garment, worked out from all sections"><span>Base amount (1 pc)</span>
+            <span className="ro">₹ {money(totals.base)}{currency && currency.code !== 'INR' && rate > 0 ? ` · ${currency.code} ${(totals.base / rate).toFixed(2)}` : ''}</span>
           </label>
+          <label className="f" title="Base amount × order qty"><span>Total amount</span>
+            <span className="ro">₹ {money(totals.total)}{currency && currency.code !== 'INR' && rate > 0 ? ` · ${currency.code} ${(totals.total / rate).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}</span>
+          </label>
+          <button type="button" className="more-btn" aria-expanded={more} onClick={() => setMore(m => !m)}>
+            {more ? '− Fewer details' : `+ More details${header.description || header.seasonId ? ' (filled)' : ''}`}
+          </button>
+          {more && (
+            <>
+            <div className="f"><span>Season / Year</span>
+              <div className="pair">
+                {sel('seasonId', lookups.seasons.map(s => ({ id: s.id, label: s.name })), 'season', { placeholder: 'Season' })}
+                {sel('year', lookups.years.map(y => ({ id: y, label: String(y) })), 'year', { placeholder: 'Year' })}
+              </div>
+            </div>
+            <label className="f span-row"><span>Description</span>
+              <input className="inp" disabled={readOnly} maxLength={500} value={header.description} onChange={e => setH({ description: e.target.value })} placeholder="e.g. First costing as per tech pack" />
+            </label>
+            </>
+          )}
         </div>
       </section>
 
@@ -357,14 +367,6 @@ export default function Costing({ active, session }) {
       })()}
       {saved && !viewing && <p className="hint">Last saved by {saved.updatedBy} · {new Date(saved.updatedAt).toLocaleString('en-IN')}</p>}
 
-      <div className="cost-footer" aria-label="Costing totals">
-        <div><span>BASE AMOUNT / GARMENT</span><b>₹ {money(totals.base)}</b></div>
-        {currency && currency.code !== 'INR' && rate > 0 && <div><span>IN {currency.code} @ {rate}</span><b>{(totals.base / rate).toFixed(2)}</b></div>}
-        <div><span>ORDER QTY</span><b>{header.orderQty ? `${qty(header.orderQty)} pcs` : '—'}</b></div>
-        <div><span>TOTAL AMOUNT</span><b>₹ {money(totals.total)}</b></div>
-        {currency && currency.code !== 'INR' && rate > 0 && <div><span>TOTAL {currency.code}</span><b>{(totals.total / rate).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></div>}
-        <button type="button" className="tb tb-primary cost-footer-save" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : 'Save (Ctrl+S)'}</button>
-      </div>
     </div>
   );
 }

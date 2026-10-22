@@ -39,6 +39,7 @@ export default function AppShell({ session, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [mod, setMod] = useState('masters');
   const [notice, setNotice] = useState('');
+  const [q, setQ] = useState('');                  // search inside the menu
   const [tabs, setTabs] = useState([]);          // open screens, e.g. ['orderEntry']
   const [active, setActive] = useState('home');  // 'home' or a screen id
 
@@ -52,6 +53,25 @@ export default function AppShell({ session, onLogout }) {
     const t = setTimeout(() => setNotice(''), 4000);
     return () => clearTimeout(t);
   }, [notice]);
+
+  // Every screen the user may open, for the search box in the menu
+  const allItems = menu.flatMap(m => m.groups.flatMap(g => g.items.map(item => ({ ...item, where: `${m.name} › ${g.title}` }))));
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const inName = (i) => words.every(w => i.name.toLowerCase().includes(w));
+  // Screens whose own name matches come first, then screens that only match by module or group
+  const found = words.length
+    ? [...allItems.filter(inName), ...allItems.filter(i => !inName(i) && words.every(w => `${i.name} ${i.where}`.toLowerCase().includes(w)))]
+    : [];
+
+  // Ctrl+K opens the menu with the cursor in its search box
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setMenuOpen(true); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  useEffect(() => { if (!menuOpen) setQ(''); }, [menuOpen]);
 
   function openScreen(item) {
     setMenuOpen(false);
@@ -68,7 +88,6 @@ export default function AppShell({ session, onLogout }) {
 
   const { user, company, unit, financialYear, licence } = session;
   const place = [unit?.name, financialYear && `FY ${financialYear.label}`].filter(Boolean).join(' · ');
-  const crumb = menuOpen ? 'Menu' : (SCREENS[active]?.crumb || 'Home');
 
   return (
     <div className="shell">
@@ -81,13 +100,7 @@ export default function AppShell({ session, onLogout }) {
               <div className="brand-sub">{place}</div>
             </div>
           </div>
-          <label className="search">
-            {Icon.search}
-            <span className="sr-only">Search</span>
-            <input type="search" placeholder="Search screens, orders, styles or POs" />
-            <span className="kbd">Ctrl K</span>
-          </label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
             <button type="button" className="icon-btn" aria-label="Help">{Icon.help}</button>
             <button type="button" className="icon-btn" aria-label="Notifications">{Icon.bell}</button>
             <button type="button" className="user-btn" aria-label={`Account: ${user.username}`}>
@@ -102,24 +115,24 @@ export default function AppShell({ session, onLogout }) {
             {menuOpen ? Icon.close : Icon.menu}{menuOpen ? 'Close menu' : 'Menu'}
           </button>
           <span className="vsep" aria-hidden="true" />
-          <button type="button" className="tool-btn">{Icon.star}Favourites</button>
-          <button type="button" className="tool-btn">{Icon.approvals}Approvals</button>
-          <button type="button" className="tool-btn">{Icon.calendar}T&amp;A calendar</button>
-          <button type="button" className="tool-btn">{Icon.reports}Reports</button>
-          <nav className="crumb" aria-label="Breadcrumb">{crumb}</nav>
+          <button type="button" className="tool-btn icon-only" title="Favourites" aria-label="Favourites">{Icon.star}</button>
+          <button type="button" className="tool-btn icon-only" title="Approvals" aria-label="Approvals">{Icon.approvals}</button>
+          <button type="button" className="tool-btn icon-only" title="T&A calendar" aria-label="T&A calendar">{Icon.calendar}</button>
+          <button type="button" className="tool-btn icon-only" title="Reports" aria-label="Reports">{Icon.reports}</button>
+          <span className="vsep" aria-hidden="true" />
+          {/* Open screens sit in the same row, so no extra strip is needed */}
+          <div className="tabs" role="tablist" aria-label="Open screens">
+            <button type="button" role="tab" aria-selected={active === 'home' && !menuOpen} className={`tab ${active === 'home' && !menuOpen ? 'active' : ''}`}
+              onClick={() => { setActive('home'); setMenuOpen(false); }}>Home</button>
+            {tabs.map(id => (
+              <div key={id} role="tab" aria-selected={active === id && !menuOpen} className={`tab ${active === id && !menuOpen ? 'active' : ''}`}>
+                <button type="button" className="tab-label" onClick={() => { setActive(id); setMenuOpen(false); }}>{SCREENS[id].title}</button>
+                <button type="button" className="tab-x" aria-label={`Close ${SCREENS[id].title}`} onClick={() => closeTab(id)}>×</button>
+              </div>
+            ))}
+          </div>
         </div>
       </header>
-
-      <div className="tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={active === 'home'} className={`tab ${active === 'home' ? 'active' : ''}`}
-          onClick={() => { setActive('home'); setMenuOpen(false); }}>Home</button>
-        {tabs.map(id => (
-          <div key={id} role="tab" aria-selected={active === id} className={`tab ${active === id ? 'active' : ''}`}>
-            <button type="button" className="tab-label" onClick={() => { setActive(id); setMenuOpen(false); }}>{SCREENS[id].title}</button>
-            <button type="button" className="tab-x" aria-label={`Close ${SCREENS[id].title}`} onClick={() => closeTab(id)}>×</button>
-          </div>
-        ))}
-      </div>
 
       <main className="workspace">
         <div className="watermark" aria-hidden="true"><OrbitMark width={230} /><Wordmark size={170} /></div>
@@ -146,19 +159,44 @@ export default function AppShell({ session, onLogout }) {
               ))}
             </nav>
             <div className="menu-body">
-              <h2>{current.name}</h2>
-              <div className="menu-groups">
-                {current.groups.map(g => (
-                  <div key={g.title}>
-                    <div className="menu-group-title">{g.title.toUpperCase()}</div>
-                    {g.items.map(item => (
-                      <button key={item.code} type="button" className="menu-link" onClick={() => openScreen(item)}>
-                        {item.name}{!READY_SCREENS[item.code] && <span className="soon">soon</span>}
-                      </button>
-                    ))}
-                  </div>
-                ))}
+              <div className="menu-top">
+                <h2>{words.length ? 'Search results' : current.name}</h2>
+                <label className="menu-search">
+                  {Icon.search}
+                  <span className="sr-only">Search screens</span>
+                  <input type="search" autoFocus placeholder="Search screens" value={q} onChange={e => setQ(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && found[0]) openScreen(found[0]);
+                      if (e.key === 'Escape') { if (q) setQ(''); else setMenuOpen(false); }
+                    }} />
+                  <span className="kbd">Ctrl K</span>
+                </label>
               </div>
+              {words.length ? (
+                <div className="menu-results">
+                  {found.length === 0 && <p className="hint">No screen matches "{q}".</p>}
+                  {found.map((item, i) => (
+                    <button key={item.code} type="button" className={`menu-link ${i === 0 ? 'first' : ''}`} onClick={() => openScreen(item)}>
+                      <span>{item.name} <small>{item.where}</small></span>
+                      {!READY_SCREENS[item.code] && <span className="soon">soon</span>}
+                    </button>
+                  ))}
+                  {found.length > 0 && <p className="hint">Enter opens the first result. Esc clears the search.</p>}
+                </div>
+              ) : (
+                <div className="menu-groups">
+                  {current.groups.map(g => (
+                    <div key={g.title}>
+                      <div className="menu-group-title">{g.title.toUpperCase()}</div>
+                      {g.items.map(item => (
+                        <button key={item.code} type="button" className="menu-link" onClick={() => openScreen(item)}>
+                          {item.name}{!READY_SCREENS[item.code] && <span className="soon">soon</span>}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -174,13 +212,6 @@ export default function AppShell({ session, onLogout }) {
         })}
       </main>
 
-      <footer className="statusbar">
-        <span className="ok">● Ready</span>
-        <span>User: {user.username} ({user.role})</span>
-        <span>Company: {company.name}{unit ? ` · ${unit.name}` : ''}</span>
-        {financialYear && <span>FY {financialYear.label}</span>}
-        <span className="right">Powered by <b style={{ color: '#fff' }}>Orbyt</b> v1.0</span>
-      </footer>
     </div>
   );
 }

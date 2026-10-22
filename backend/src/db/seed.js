@@ -4,8 +4,6 @@ import bcrypt from 'bcryptjs';
 import { pool, withTransaction } from './pool.js';
 import { env } from '../config/env.js';
 
-const MODULES = ['masters', 'order', 'purchase', 'inventory', 'production', 'finance', 'reports', 'admin'];
-
 async function seed() {
   if (!env.seedAdminPassword || env.seedAdminPassword.length < 8) {
     throw new Error('Set SEED_ADMIN_PASSWORD (at least 8 characters) in backend/.env before seeding.');
@@ -29,11 +27,15 @@ async function seed() {
        VALUES ($1, '2026-27', '26-27', '2026-04-01', '2027-03-31', TRUE)
        ON CONFLICT (company_id, label) DO NOTHING`, [company.id]);
 
-    for (const m of MODULES) {
-      await db.query(
-        `INSERT INTO company_modules (company_id, module_code, enabled) VALUES ($1, $2, TRUE)
-         ON CONFLICT DO NOTHING`, [company.id, m]);
-    }
+    // First company gets every module and every screen/report; the owner can switch them off later
+    await db.query(
+      `INSERT INTO company_modules (company_id, module_code, enabled)
+       SELECT $1, code, TRUE FROM modules
+       ON CONFLICT DO NOTHING`, [company.id]);
+    await db.query(
+      `INSERT INTO company_features (company_id, feature_code)
+       SELECT $1, code FROM features
+       ON CONFLICT DO NOTHING`, [company.id]);
 
     const role = (await db.query(
       `INSERT INTO roles (company_id, name, is_admin) VALUES ($1, 'Admin', TRUE)

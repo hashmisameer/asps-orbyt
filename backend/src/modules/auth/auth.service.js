@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { query } from '../../db/pool.js';
 import { env } from '../../config/env.js';
 import { AppError } from '../../middleware/errors.js';
+import { getCompanyState, getUserAccess, BLOCKED_MESSAGE } from '../access/access.service.js';
 
 const MAX_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
@@ -18,8 +19,9 @@ export async function login({ username, password, companyCode }) {
   if (!username || !password) throw new AppError(400, 'Enter your user ID and password.');
 
   const code = companyCode || env.defaultCompanyCode;
-  const company = (await query('SELECT id, is_active FROM companies WHERE code = $1', [code]))[0];
+  const company = (await query('SELECT id, is_active, status FROM companies WHERE code = $1', [code]))[0];
   if (!company || !company.is_active) throw new AppError(401, BAD_LOGIN);
+  if (company.status !== 'active') throw new AppError(403, BLOCKED_MESSAGE);
 
   const user = (await query(
     `SELECT id, password_hash, is_active, failed_attempts, locked_until, default_unit_id
@@ -77,16 +79,19 @@ export async function getSession(userId, companyId) {
 
   const fy = (await query(
     'SELECT label, short_label FROM financial_years WHERE company_id = $1 AND is_current LIMIT 1', [companyId]))[0];
-  const modules = (await query(
-    'SELECT module_code FROM company_modules WHERE company_id = $1 AND enabled ORDER BY module_code', [companyId]))
-    .map(m => m.module_code);
+  const state = await getCompanyState(companyId);
+  if (state.blocked) throw new AppError(403, BLOCKED_MESSAGE);
+  // Only the modules, screens and reports this user may open (the rest never reach the browser)
+  const access = await getUserAccess(userId, companyId);
 
   return {
     user: { id: row.id, username: row.username, fullName: row.full_name, designation: row.designation, role: row.role, isAdmin: row.is_admin },
     company: { id: row.company_id, code: row.company_code, name: row.company_name, logoUrl: row.logo_url },
     unit: row.unit_id ? { id: row.unit_id, name: row.unit_name } : null,
     financialYear: fy ? { label: fy.label, short: fy.short_label } : null,
-    modules
+    licence: state.licence,
+    menu: access.menu,                  // modules -> groups -> screens/reports
+    permissions: access.permissions     // e.g. { 'order.entry': ['view', 'create', 'edit'] }
   };
 }
 

@@ -316,16 +316,32 @@ export async function getOrder(companyId, orderId) {
   };
 }
 
-export async function listOrders(companyId) {
-  return query(
-    `SELECT o.id, b.name AS brand, s.code AS style, COUNT(l.id)::int AS lines,
-            COALESCE(SUM(l.total_qty), 0)::int AS total_qty, o.created_at
+// Saved orders for the Find panel. `search` matches order no., buyer PO, brand or style.
+export async function listOrders(companyId, search = '') {
+  const q = String(search || '').trim();
+  const rows = await query(
+    `SELECT o.id, b.name AS brand, s.code AS style_code, s.name AS style_name,
+            COUNT(l.id)::int AS lines, COALESCE(SUM(l.total_qty), 0)::int AS total_qty,
+            MIN(l.order_no) AS first_order_no, MAX(l.order_no) AS last_order_no,
+            STRING_AGG(DISTINCT l.buyer_po_no, ', ') AS buyer_pos,
+            to_char(MIN(l.ex_factory_date), 'YYYY-MM-DD') AS first_ex_factory,
+            o.created_at
        FROM orders o
        JOIN brands b ON b.id = o.brand_id
        JOIN styles s ON s.id = o.style_id
        LEFT JOIN order_lines l ON l.order_id = o.id
       WHERE o.company_id = $1
-      GROUP BY o.id, b.name, s.code
+        AND ($2 = '' OR EXISTS (
+              SELECT 1 FROM order_lines x
+               WHERE x.order_id = o.id AND (x.order_no ILIKE '%' || $2 || '%' OR x.buyer_po_no ILIKE '%' || $2 || '%'))
+             OR b.name ILIKE '%' || $2 || '%' OR s.code ILIKE '%' || $2 || '%' OR s.name ILIKE '%' || $2 || '%')
+      GROUP BY o.id, b.name, s.code, s.name
       ORDER BY o.created_at DESC
-      LIMIT 50`, [companyId]);
+      LIMIT 50`, [companyId, q]);
+  return rows.map(r => ({
+    id: r.id, brand: r.brand, styleCode: r.style_code, styleName: r.style_name,
+    lines: r.lines, totalQty: r.total_qty,
+    orderNos: r.first_order_no === r.last_order_no ? r.first_order_no : `${r.first_order_no} – ${r.last_order_no.split('/').pop()}`,
+    buyerPos: r.buyer_pos || '', firstExFactory: r.first_ex_factory, createdAt: r.created_at
+  }));
 }

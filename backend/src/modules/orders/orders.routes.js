@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { asyncHandler, AppError } from '../../middleware/errors.js';
 import { requireAuth } from '../../middleware/auth.js';
 import * as orders from './orders.service.js';
+import { can } from '../access/access.service.js';
+
+const FEATURE = 'order.entry';
 
 export const ordersRouter = Router();
 ordersRouter.use(requireAuth);
@@ -13,36 +16,36 @@ function idParam(value) {
 }
 
 // Dropdown data for the Order entry screen
-ordersRouter.get('/lookups', asyncHandler(async (req, res) => {
+ordersRouter.get('/lookups', can(FEATURE, 'view'), asyncHandler(async (req, res) => {
   res.json(await orders.getLookups(req.user.companyId));
 }));
 
 // Preview of the next order numbers for a brand (does not reserve them)
-ordersRouter.get('/next-numbers', asyncHandler(async (req, res) => {
+ordersRouter.get('/next-numbers', can(FEATURE, 'view'), asyncHandler(async (req, res) => {
   const brandId = idParam(req.query.brandId);
   const count = Number(req.query.count) || 1;
   res.json({ numbers: await orders.previewNumbers(req.user.companyId, brandId, count) });
 }));
 
-ordersRouter.get('/', asyncHandler(async (req, res) => {
-  res.json(await orders.listOrders(req.user.companyId));
+ordersRouter.get('/', can(FEATURE, 'view'), asyncHandler(async (req, res) => {
+  res.json(await orders.listOrders(req.user.companyId, req.query.search));
 }));
 
-ordersRouter.post('/', asyncHandler(async (req, res) => {
+ordersRouter.post('/', can(FEATURE, 'create'), asyncHandler(async (req, res) => {
   res.status(201).json(await orders.createOrder(req.user, req.body || {}));
 }));
 
-ordersRouter.get('/:id', asyncHandler(async (req, res) => {
+ordersRouter.get('/:id', can(FEATURE, 'view'), asyncHandler(async (req, res) => {
   res.json(await orders.getOrder(req.user.companyId, idParam(req.params.id)));
 }));
 
 // Add more lines to a saved order
-ordersRouter.post('/:id/lines', asyncHandler(async (req, res) => {
+ordersRouter.post('/:id/lines', can(FEATURE, 'edit'), asyncHandler(async (req, res) => {
   res.status(201).json(await orders.addLines(req.user, idParam(req.params.id), req.body || {}));
 }));
 
 // Change a saved line (only buyer PO, size range and quantities)
-ordersRouter.patch('/:id/lines/:lineId', asyncHandler(async (req, res) => {
+ordersRouter.patch('/:id/lines/:lineId', can(FEATURE, 'edit'), asyncHandler(async (req, res) => {
   res.json(await orders.updateLine(req.user, idParam(req.params.id), idParam(req.params.lineId), req.body || {}));
 }));
 

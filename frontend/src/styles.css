@@ -119,6 +119,7 @@ a { color: var(--teal); }
 .tab-x { border: 0; background: transparent; color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer; padding: 2px 4px; border-radius: 3px; }
 .tab-x:hover { background: var(--danger-bg); color: var(--danger); }
 .alert-info { background: var(--teal-light); color: var(--teal-dark); border: 1px solid var(--teal-soft); }
+.alert-warn { background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
 .alert-success { background: var(--teal-light); color: var(--teal-dark); border: 1px solid var(--teal-soft); }
 
 /* ---------- Transaction screens (Order entry and later) ---------- */
@@ -153,7 +154,7 @@ a { color: var(--teal); }
 .bad { border-color: var(--danger) !important; background: #FFF8F8; }
 
 .grid-scroll { overflow-x: auto; padding: 10px; }
-.og { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 1400px; }
+.og { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 1250px; }
 .og th { background: var(--panel-head); color: #2C3742; font-weight: 600; text-align: left; padding: 7px 8px; border: 1px solid var(--border); white-space: nowrap; vertical-align: bottom; }
 .og th .sub { display: block; font-weight: 400; font-size: 10px; color: var(--muted); }
 .og td { border: 1px solid #E3E8EC; padding: 4px 6px; white-space: nowrap; vertical-align: middle; background: var(--white); }
@@ -177,3 +178,26 @@ a { color: var(--teal); }
 .tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 3px; background: var(--teal-light); color: var(--teal-dark); margin-left: 4px; }
 .empty-row { text-align: center; padding: 24px !important; color: var(--muted); }
 .audit-line { font-size: 11px; color: var(--muted); padding: 2px; }
+
+/* ---------- Date box (always DD-MM-YYYY) ---------- */
+.date-in { position: relative; display: flex; align-items: center; height: 30px; border: 1px solid var(--border); border-radius: 3px; background: var(--white); min-width: 112px; }
+.date-in:focus-within { outline: 2px solid var(--teal); outline-offset: -1px; }
+.date-in input[type="text"] { flex: 1; width: 0; min-width: 0; height: 100%; border: 0; background: transparent; padding: 0 6px; font-size: 12px; color: var(--text); outline: none; }
+.date-btn { flex: none; width: 26px; height: 100%; border: 0; border-left: 1px solid #EEF1F3; background: transparent; color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.date-btn:hover { color: var(--teal); }
+.date-hidden { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; pointer-events: none; }
+.tb-soon { color: var(--muted); border-style: dashed; }
+.tb-soon:hover { background: var(--white); }
+
+/* ---------- Find panel ---------- */
+.find-backdrop { position: fixed; inset: 0; background: rgba(23, 32, 43, .35); z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: 70px 16px 16px; }
+.find-panel { width: min(1000px, 100%); max-height: 80vh; display: flex; flex-direction: column; gap: 10px; background: var(--white); border-radius: 8px; border-top: 3px solid var(--teal); padding: 14px 16px; box-shadow: 0 20px 50px rgba(23, 32, 43, .25); }
+.find-head { display: flex; justify-content: space-between; align-items: center; }
+.find-head h2 { margin: 0; font-size: 16px; }
+.find-list { overflow: auto; border: 1px solid var(--border); border-radius: 4px; }
+.find-table { min-width: 860px; }
+.find-row { cursor: pointer; }
+.find-row:hover td, .find-row:focus td { background: var(--teal-light); }
+.find-row:focus { outline: none; }
+.og select.ci { min-width: 92px; }
+.og input.ci[aria-label^="Buyer PO"] { min-width: 130px; }

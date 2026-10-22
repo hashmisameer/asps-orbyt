@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { OrbitMark, Wordmark } from '../components/Logo.jsx';
-import { MENU, READY_SCREENS } from './menu.js';
+import { READY_SCREENS } from './menu.js';
 import OrderEntry from '../screens/OrderEntry.jsx';
 
 // Built screens: id -> component, tab title and breadcrumb
@@ -21,6 +21,8 @@ const Icon = {
   power: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 3v9M6.3 6.3a8 8 0 1011.4 0" /></svg>
 };
 
+const fmtDate = (iso) => (iso ? iso.split('-').reverse().join('-') : '');
+
 function initials(name = '') {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'U';
 }
@@ -32,8 +34,8 @@ export default function AppShell({ session, onLogout }) {
   const [tabs, setTabs] = useState([]);          // open screens, e.g. ['orderEntry']
   const [active, setActive] = useState('home');  // 'home' or a screen id
 
-  // Only modules switched on for this company appear in the menu
-  const menu = useMemo(() => MENU.filter(m => session.modules.includes(m.code)), [session.modules]);
+  // The server sends only the modules and screens this user may open
+  const menu = session.menu || [];
   const current = menu.find(m => m.code === mod) || menu[0];
 
   // Messages disappear after a few seconds
@@ -43,10 +45,10 @@ export default function AppShell({ session, onLogout }) {
     return () => clearTimeout(t);
   }, [notice]);
 
-  function openScreen(name) {
+  function openScreen(item) {
     setMenuOpen(false);
-    const id = READY_SCREENS[name];
-    if (!id) { setNotice(`"${name}" is coming in a later phase.`); return; }
+    const id = READY_SCREENS[item.code];
+    if (!id) { setNotice(`"${item.name}" is coming in a later phase.`); return; }
     setTabs(t => (t.includes(id) ? t : [...t, id]));
     setActive(id);
   }
@@ -56,7 +58,7 @@ export default function AppShell({ session, onLogout }) {
     if (active === id) setActive('home');
   }
 
-  const { user, company, unit, financialYear } = session;
+  const { user, company, unit, financialYear, licence } = session;
   const place = [unit?.name, financialYear && `FY ${financialYear.label}`].filter(Boolean).join(' · ');
   const crumb = menuOpen ? 'Menu' : (SCREENS[active]?.crumb || 'Home');
 
@@ -114,9 +116,18 @@ export default function AppShell({ session, onLogout }) {
       <main className="workspace">
         <div className="watermark" aria-hidden="true"><OrbitMark width={230} /><Wordmark size={170} /></div>
 
+        {licence?.expired && (
+          <div className="alert alert-error" role="alert">Your ORBYT licence ended on {fmtDate(licence.validTill)}. You can view data, but saving is paused. Contact ORBYT support to renew.</div>
+        )}
+        {licence?.warn && (
+          <div className="alert alert-warn" role="status">Your ORBYT licence ends on {fmtDate(licence.validTill)} ({licence.daysLeft === 0 ? 'today' : `${licence.daysLeft} day${licence.daysLeft === 1 ? '' : 's'} left`}). Contact ORBYT support to renew.</div>
+        )}
         {notice && <div className="alert alert-info" role="status">{notice}</div>}
 
-        {menuOpen && (
+        {menuOpen && !current && (
+          <section className="menu-panel" aria-label="Menu"><div className="menu-body"><h2>No screens yet</h2><p>Your role has no screens yet. Ask your administrator for access.</p></div></section>
+        )}
+        {menuOpen && current && (
           <section className="menu-panel" aria-label="Menu">
             <nav className="menu-mods" aria-label="Modules">
               {menu.map(m => (
@@ -133,8 +144,8 @@ export default function AppShell({ session, onLogout }) {
                   <div key={g.title}>
                     <div className="menu-group-title">{g.title.toUpperCase()}</div>
                     {g.items.map(item => (
-                      <button key={item} type="button" className="menu-link" onClick={() => openScreen(item)}>
-                        {item}{!READY_SCREENS[item] && <span className="soon">soon</span>}
+                      <button key={item.code} type="button" className="menu-link" onClick={() => openScreen(item)}>
+                        {item.name}{!READY_SCREENS[item.code] && <span className="soon">soon</span>}
                       </button>
                     ))}
                   </div>

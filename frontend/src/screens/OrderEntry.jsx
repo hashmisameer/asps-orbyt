@@ -4,6 +4,8 @@
 // After saving, only buyer PO no., size range and quantities can change.
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
+import DateInput from '../components/DateInput.jsx';
+import FindOrders from './FindOrders.jsx';
 
 let keySeq = 0;
 const newKey = () => `n${++keySeq}`;
@@ -21,10 +23,11 @@ function toInt(v) {
   return Number.isNaN(n) || n < 0 ? 0 : n;
 }
 
-const blankLine = () => ({
+// A new line copies dispatch mode, colour and dates from the line before it
+const blankLine = (prev) => ({
   key: newKey(), id: null, saved: false, dirty: true, orderNo: '',
-  lineDate: today(), dispatchMode: '', buyerPoNo: '', colourId: '',
-  sizeRangeId: '', sizes: {}, manualTotal: '', exFactoryDate: '', fobDate: ''
+  lineDate: today(), dispatchMode: prev?.dispatchMode || '', buyerPoNo: '', colourId: prev?.colourId || '',
+  sizeRangeId: '', sizes: {}, manualTotal: '', exFactoryDate: prev?.exFactoryDate || '', fobDate: prev?.fobDate || ''
 });
 
 // Server line -> screen line
@@ -50,10 +53,19 @@ export default function OrderEntry({ active, onNotice }) {
   const [serverError, setServerError] = useState('');
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const [focusKey, setFocusKey] = useState(null);   // line to put the cursor in after adding it
 
   useEffect(() => {
     api('/orders/lookups').then(setLookups).catch(e => setLoadError(e.message));
   }, []);
+
+  // Put the cursor in the first box of a newly added line
+  useEffect(() => {
+    if (!focusKey) return;
+    document.querySelector(`[data-line="${focusKey}"] [data-first]`)?.focus();
+    setFocusKey(null);
+  }, [focusKey]);
 
   const ranges = useMemo(() => Object.fromEntries((lookups?.sizeRanges || []).map(r => [String(r.id), r])), [lookups]);
   const brandId = order ? String(order.brandId) : header.brandId;
@@ -84,7 +96,13 @@ export default function OrderEntry({ active, onNotice }) {
   };
   const setSize = (key, size, value) => { setMessage(''); setLines(ls => ls.map(l => (l.key === key ? { ...l, sizes: { ...l.sizes, [size]: value }, dirty: true } : l))); };
   const setRange = (key, value) => setLine(key, { sizeRangeId: value, sizes: value ? Object.fromEntries(ranges[value].sizes.map(s => [s, ''])) : {} });
-  const addLine = () => { setMessage(''); setLines(ls => [...ls, blankLine()]); };
+  // The new line is built from the latest lines, so a date just typed on the last line is copied too
+  const addLine = () => {
+    setMessage('');
+    const key = newKey();
+    setLines(ls => [...ls, { ...blankLine(ls[ls.length - 1]), key }]);
+    setFocusKey(key);
+  };
   const removeLine = (key) => setLines(ls => ls.filter(l => l.key !== key));
 
   const setStyleText = (text) => {
@@ -187,11 +205,25 @@ export default function OrderEntry({ active, onNotice }) {
     setTried(false); setProblems([]); setServerError(''); setMessage('');
   }
 
-  // Keyboard: F2 = new, Ctrl+S = save (only while this tab is on screen)
+  async function openOrder(id) {
+    if (isDirty && !window.confirm('Discard the changes on this screen and open the selected order?')) return;
+    try {
+      const saved = await api(`/orders/${id}`);
+      loadSaved(saved);
+      setHeader(blankHeader());
+      setTried(false); setProblems([]); setServerError(''); setMessage('');
+    } catch (e) {
+      setServerError(e.message);
+    }
+    setFindOpen(false);
+  }
+
+  // Keyboard: F2 = new, F3 = find, Ctrl+S = save (only while this tab is on screen)
   useEffect(() => {
     if (!active) return undefined;
     const onKey = (e) => {
       if (e.key === 'F2') { e.preventDefault(); startNew(); }
+      if (e.key === 'F3') { e.preventDefault(); setFindOpen(true); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
     };
     window.addEventListener('keydown', onKey);
@@ -208,6 +240,7 @@ export default function OrderEntry({ active, onNotice }) {
 
   return (
     <div className="screen">
+      {findOpen && <FindOrders onOpen={openOrder} onClose={() => setFindOpen(false)} />}
       <div className="screen-head">
         <h1 className="screen-title">Order entry</h1>
         <span className={`chip ${status[1]}`}>{status[0]}</span>
@@ -216,11 +249,12 @@ export default function OrderEntry({ active, onNotice }) {
 
       <div className="toolbar">
         <button type="button" className="tb" onClick={startNew}>+ New (F2)</button>
+        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Find (F3)</button>
         <button type="button" className="tb tb-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save (Ctrl+S)'}</button>
         <span className="tb-sep" aria-hidden="true" />
-        <button type="button" className="tb" onClick={() => onNotice('Print is coming in a later phase.')}>Print</button>
-        <button type="button" className="tb" onClick={() => onNotice('Excel import is coming in a later phase.')}>Import lines from Excel</button>
-        <button type="button" className="tb" style={{ marginLeft: 'auto' }} onClick={() => onNotice('Audit trail screen is coming in a later phase.')}>Audit trail</button>
+        <button type="button" className="tb tb-soon" title="Coming in a later phase" onClick={() => onNotice('Print is coming in a later phase.')}>Print</button>
+        <button type="button" className="tb tb-soon" title="Coming in a later phase" onClick={() => onNotice('Excel import is coming in a later phase.')}>Import lines from Excel</button>
+        <button type="button" className="tb tb-soon" title="Coming in a later phase" style={{ marginLeft: 'auto' }} onClick={() => onNotice('Audit trail screen is coming in a later phase.')}>Audit trail</button>
       </div>
 
       {message && <div className="alert alert-success" role="status">{message}</div>}
@@ -232,14 +266,13 @@ export default function OrderEntry({ active, onNotice }) {
       <section className="panel">
         <div className="panel-head">ORDER HEADER</div>
         <div className="form-grid">
-          <label className="f"><span>Brand <span className="req">*</span></span>
+          <label className="f" title="The brand initials go into each order no."><span>Brand <span className="req">*</span></span>
             {order ? <span className="ro">{order.brandName} ({order.brandInitials})</span> : (
               <select className={`inp ${tried && !header.brandId ? 'bad' : ''}`} value={header.brandId} onChange={e => setHeader(h => ({ ...h, brandId: e.target.value }))}>
                 <option value="">Select brand</option>
                 {lookups.brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             )}
-            <span className="hint">Initials go into each order no.</span>
           </label>
           <label className="f"><span>Product category <span className="req">*</span></span>
             {order ? <span className="ro">{categoryName(order.productCategoryId)}</span> : (
@@ -249,7 +282,7 @@ export default function OrderEntry({ active, onNotice }) {
               </select>
             )}
           </label>
-          <label className="f span2"><span>Style <span className="req">*</span></span>
+          <label className="f span2" title="Styles created on the Style screen show here"><span>Style <span className="req">*</span></span>
             {order ? <span className="ro">{order.styleCode} · {order.styleName}</span> : (
               <>
                 <input className={`inp ${tried && !header.styleId ? 'bad' : ''}`} list="order-styles" placeholder="Type to search style"
@@ -259,7 +292,6 @@ export default function OrderEntry({ active, onNotice }) {
                 </datalist>
               </>
             )}
-            <span className="hint">Styles created on the Style screen show here</span>
           </label>
           <label className="f"><span>Allowed deviation <span className="req">*</span></span>
             {order ? <span className="ro">{order.allowedDeviation === 'open' ? 'Open (no limit)' : `${order.allowedDeviation}%`}</span> : (
@@ -270,9 +302,8 @@ export default function OrderEntry({ active, onNotice }) {
               </select>
             )}
           </label>
-          <label className="f"><span>Total order qty</span>
+          <label className="f" title="Sum of all order lines, worked out automatically"><span>Total order qty</span>
             <span className="ro">{fmtNum(grandTotal)} pcs</span>
-            <span className="hint">Auto, sum of all lines</span>
           </label>
         </div>
       </section>
@@ -287,16 +318,16 @@ export default function OrderEntry({ active, onNotice }) {
             <thead>
               <tr>
                 <th className="c-act"><button type="button" className="add-btn" onClick={addLine} aria-label="Add order line" title="Add order line">+</button></th>
-                <th style={{ width: 130 }}>Date</th>
+                <th style={{ width: 128 }}>Date</th>
                 <th style={{ width: 170 }}>Order no.<span className="sub">auto</span></th>
                 <th style={{ width: 110 }}>Dispatch mode <span className="req">*</span></th>
                 <th style={{ width: 140 }}>Buyer PO no.<span className="sub">editable after save</span></th>
-                <th style={{ width: 110 }}>Colour <span className="req">*</span></th>
+                <th style={{ width: 120 }}>Colour <span className="req">*</span></th>
                 <th style={{ width: 140 }}>Size range<span className="sub">can pick after save</span></th>
-                <th>Size-wise qty</th>
-                <th style={{ width: 110 }} className="num">Total qty <span className="req">*</span></th>
-                <th style={{ width: 130 }}>Ex-factory <span className="req">*</span></th>
-                <th style={{ width: 130 }}>FOB date <span className="req">*</span></th>
+                <th style={{ width: '40%', minWidth: 120 }}>Size-wise qty</th>
+                <th style={{ width: 96 }} className="num">Total qty <span className="req">*</span></th>
+                <th style={{ width: 128 }}>Ex-factory <span className="req">*</span></th>
+                <th style={{ width: 128 }}>FOB date <span className="req">*</span></th>
               </tr>
             </thead>
             <tbody>
@@ -308,7 +339,7 @@ export default function OrderEntry({ active, onNotice }) {
                 const range = l.sizeRangeId ? ranges[l.sizeRangeId] : null;
                 const preview = l.saved ? null : previews[previewIndex++];
                 return (
-                  <tr key={l.key}>
+                  <tr key={l.key} data-line={l.key}>
                     <td className="c-act">
                       {l.saved
                         ? <span className="lock" title="Saved line" aria-label="Saved line">
@@ -319,11 +350,11 @@ export default function OrderEntry({ active, onNotice }) {
                           </button>}
                     </td>
                     <td>{l.saved ? fmtDate(l.lineDate)
-                      : <input type="date" className={`ci ${b.lineDate ? 'bad' : ''}`} aria-label={`Date line ${i + 1}`} value={l.lineDate} onChange={e => setLine(l.key, { lineDate: e.target.value })} />}</td>
+                      : <DateInput className={b.lineDate ? 'bad' : ''} ariaLabel={`Date line ${i + 1}`} value={l.lineDate} onChange={v => setLine(l.key, { lineDate: v })} />}</td>
                     <td className="order-no">{l.saved ? l.orderNo
                       : <span className="preview">{preview || (brandId ? '…' : 'Pick a brand')} {preview && <small>(on save)</small>}</span>}</td>
                     <td>{l.saved ? (l.dispatchMode === 'air' ? 'By air' : 'By sea')
-                      : <select className={`ci ${b.dispatchMode ? 'bad' : ''}`} aria-label={`Dispatch mode line ${i + 1}`} value={l.dispatchMode} onChange={e => setLine(l.key, { dispatchMode: e.target.value })}>
+                      : <select data-first className={`ci ${b.dispatchMode ? 'bad' : ''}`} aria-label={`Dispatch mode line ${i + 1}`} value={l.dispatchMode} onChange={e => setLine(l.key, { dispatchMode: e.target.value })}>
                           <option value="">Select</option><option value="sea">By sea</option><option value="air">By air</option>
                         </select>}</td>
                     <td><input className="ci" aria-label={`Buyer PO no. line ${i + 1}`} placeholder="Add later" value={l.buyerPoNo} onChange={e => setLine(l.key, { buyerPoNo: e.target.value })} /></td>
@@ -349,7 +380,7 @@ export default function OrderEntry({ active, onNotice }) {
                             </label>
                           ))}
                         </div>
-                      ) : <span className="hint">No size range yet</span>}
+                      ) : <span className="hint">—</span>}
                     </td>
                     <td className="num">
                       {range
@@ -358,16 +389,18 @@ export default function OrderEntry({ active, onNotice }) {
                             onChange={e => setLine(l.key, { manualTotal: e.target.value.replace(/[^\d]/g, '') })} />}
                     </td>
                     <td>{l.saved ? fmtDate(l.exFactoryDate)
-                      : <input type="date" className={`ci ${b.exFactoryDate ? 'bad' : ''}`} aria-label={`Ex-factory line ${i + 1}`} value={l.exFactoryDate} onChange={e => setLine(l.key, { exFactoryDate: e.target.value })} />}</td>
+                      : <DateInput className={b.exFactoryDate ? 'bad' : ''} ariaLabel={`Ex-factory line ${i + 1}`} value={l.exFactoryDate} onChange={v => setLine(l.key, { exFactoryDate: v })} />}</td>
                     <td>{l.saved ? fmtDate(l.fobDate)
-                      : <input type="date" className={`ci ${b.fobDate ? 'bad' : ''}`} aria-label={`FOB date line ${i + 1}`} value={l.fobDate} onChange={e => setLine(l.key, { fobDate: e.target.value })} />}</td>
+                      : <DateInput className={b.fobDate ? 'bad' : ''} ariaLabel={`FOB date line ${i + 1}`} value={l.fobDate} onChange={v => setLine(l.key, { fobDate: v })}
+                          title="Press Enter on the last line to add a new line"
+                          onKeyDown={e => { if (e.key === 'Enter' && i === lines.length - 1) { e.preventDefault(); setTimeout(addLine, 0); } }} />}</td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={8}>Total · {plural(lines.length, 'line')} · max allowed {maxAllowed}</td>
+                <td colSpan={8}>Total · {plural(lines.length, 'line')}{grandTotal > 0 && ` · max allowed ${maxAllowed}`}</td>
                 <td className="num"><b>{fmtNum(grandTotal)}</b></td>
                 <td colSpan={2} />
               </tr>

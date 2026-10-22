@@ -17,10 +17,12 @@
   --danger: #B42318;
   --danger-bg: #FDE8E8;
   --amber: #B45309;
+  --ui-scale: 0.9; /* 0.9 = 90% */
 }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
+html { zoom: var(--ui-scale); }
 body { margin: 0; font-family: Inter, system-ui, sans-serif; font-size: 13px; color: var(--text); background: var(--bg); }
 button, input, select, textarea { font: inherit; }
 a { color: var(--teal); }
@@ -28,7 +30,7 @@ a { color: var(--teal); }
 .wordmark { font-weight: 700; letter-spacing: -0.03em; }
 
 /* ---------- Login (centred card) ---------- */
-.login-page { min-height: 100vh; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 40px 20px; background: var(--bg-soft); }
+.login-page { min-height: calc(100vh / var(--ui-scale)); position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; padding: 40px 20px; background: var(--bg-soft); }
 .login-bg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 1500px; height: 1050px; opacity: .5; pointer-events: none; }
 .login-wrap { position: relative; display: flex; flex-direction: column; align-items: center; gap: 26px; width: 100%; max-width: 420px; }
 .login-brand { display: flex; flex-direction: column; align-items: center; gap: 8px; }
@@ -57,7 +59,7 @@ a { color: var(--teal); }
 .login-foot { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); text-align: center; }
 
 /* ---------- App shell ---------- */
-.shell { display: flex; flex-direction: column; min-height: 100vh; }
+.shell { display: flex; flex-direction: column; min-height: calc(100vh / var(--ui-scale)); }
 .topbar { background: var(--white); border-bottom: 1px solid var(--border); }
 .topbar-row1 { display: flex; align-items: center; gap: 16px; min-height: 56px; padding: 0 16px; flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 10px; flex: none; }

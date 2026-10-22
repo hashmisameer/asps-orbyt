@@ -1,13 +1,18 @@
 {
   "name": "orbyt",
   "private": true,
-  "description": "ORBYT – Operations, Resources, Business & Yield. ERP for manufacturers.",
+  "description": "ORBYT \u2013 Operations, Resources, Business & Yield. ERP for manufacturers.",
   "scripts": {
+    "dev": "concurrently -n api,web -c cyan,green \"npm run dev:backend\" \"npm run dev:frontend\"",
     "install:all": "npm install --prefix backend && npm install --prefix frontend",
     "db:migrate": "npm run migrate --prefix backend",
     "db:seed": "npm run seed --prefix backend",
+    "db:seed:orders": "npm run seed:orders --prefix backend",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
     "build": "npm run build --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "9.1.2"
   }
 }

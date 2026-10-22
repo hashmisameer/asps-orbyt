@@ -1,5 +1,5 @@
 // The full ORBYT menu. Each module only shows if it is switched on for the company.
-// `ready: false` screens are planned but not built yet.
+// Items listed in READY_SCREENS are built and open as a tab; the rest show "soon".
 export const MENU = [
   { code: 'masters', name: 'Masters', groups: [
     { title: 'Party', items: ['Party master'] },
@@ -32,3 +32,8 @@ export const MENU = [
     { title: 'Settings', items: ['Company settings', 'Number series'] }
   ] }
 ];
+
+// Screens that are built. key = menu item name, value = screen id used by AppShell.
+export const READY_SCREENS = {
+  'Order entry': 'orderEntry'
+};

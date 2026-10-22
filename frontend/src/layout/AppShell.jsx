@@ -1,6 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { OrbitMark, Wordmark } from '../components/Logo.jsx';
-import { MENU } from './menu.js';
+import { MENU, READY_SCREENS } from './menu.js';
+import OrderEntry from '../screens/OrderEntry.jsx';
+
+// Built screens: id -> component, tab title and breadcrumb
+const SCREENS = {
+  orderEntry: { component: OrderEntry, title: 'Order entry', crumb: 'Order › Order entry' }
+};
 
 const Icon = {
   menu: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>,
@@ -19,22 +25,40 @@ function initials(name = '') {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'U';
 }
 
-export default function AppShell({ session, onLogout, children }) {
+export default function AppShell({ session, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [mod, setMod] = useState('masters');
   const [notice, setNotice] = useState('');
+  const [tabs, setTabs] = useState([]);          // open screens, e.g. ['orderEntry']
+  const [active, setActive] = useState('home');  // 'home' or a screen id
 
   // Only modules switched on for this company appear in the menu
   const menu = useMemo(() => MENU.filter(m => session.modules.includes(m.code)), [session.modules]);
   const current = menu.find(m => m.code === mod) || menu[0];
 
+  // Messages disappear after a few seconds
+  useEffect(() => {
+    if (!notice) return undefined;
+    const t = setTimeout(() => setNotice(''), 4000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
   function openScreen(name) {
     setMenuOpen(false);
-    setNotice(`"${name}" is coming in the next phase.`);
+    const id = READY_SCREENS[name];
+    if (!id) { setNotice(`"${name}" is coming in a later phase.`); return; }
+    setTabs(t => (t.includes(id) ? t : [...t, id]));
+    setActive(id);
+  }
+
+  function closeTab(id) {
+    setTabs(t => t.filter(x => x !== id));
+    if (active === id) setActive('home');
   }
 
   const { user, company, unit, financialYear } = session;
   const place = [unit?.name, financialYear && `FY ${financialYear.label}`].filter(Boolean).join(' · ');
+  const crumb = menuOpen ? 'Menu' : (SCREENS[active]?.crumb || 'Home');
 
   return (
     <div className="shell">
@@ -72,20 +96,27 @@ export default function AppShell({ session, onLogout, children }) {
           <button type="button" className="tool-btn">{Icon.approvals}Approvals</button>
           <button type="button" className="tool-btn">{Icon.calendar}T&amp;A calendar</button>
           <button type="button" className="tool-btn">{Icon.reports}Reports</button>
-          <nav className="crumb" aria-label="Breadcrumb">{menuOpen ? 'Menu' : 'Home'}</nav>
+          <nav className="crumb" aria-label="Breadcrumb">{crumb}</nav>
         </div>
       </header>
 
       <div className="tabs" role="tablist">
-        <button type="button" className="tab active" role="tab" aria-selected="true">Home</button>
+        <button type="button" role="tab" aria-selected={active === 'home'} className={`tab ${active === 'home' ? 'active' : ''}`}
+          onClick={() => { setActive('home'); setMenuOpen(false); }}>Home</button>
+        {tabs.map(id => (
+          <div key={id} role="tab" aria-selected={active === id} className={`tab ${active === id ? 'active' : ''}`}>
+            <button type="button" className="tab-label" onClick={() => { setActive(id); setMenuOpen(false); }}>{SCREENS[id].title}</button>
+            <button type="button" className="tab-x" aria-label={`Close ${SCREENS[id].title}`} onClick={() => closeTab(id)}>×</button>
+          </div>
+        ))}
       </div>
 
       <main className="workspace">
         <div className="watermark" aria-hidden="true"><OrbitMark width={230} /><Wordmark size={170} /></div>
 
-        {notice && <div className="alert" style={{ background: 'var(--teal-light)', color: 'var(--teal-dark)', border: '1px solid var(--teal-soft)' }} role="status">{notice}</div>}
+        {notice && <div className="alert alert-info" role="status">{notice}</div>}
 
-        {menuOpen ? (
+        {menuOpen && (
           <section className="menu-panel" aria-label="Menu">
             <nav className="menu-mods" aria-label="Modules">
               {menu.map(m => (
@@ -103,7 +134,7 @@ export default function AppShell({ session, onLogout, children }) {
                     <div className="menu-group-title">{g.title.toUpperCase()}</div>
                     {g.items.map(item => (
                       <button key={item} type="button" className="menu-link" onClick={() => openScreen(item)}>
-                        {item}<span className="soon">soon</span>
+                        {item}{!READY_SCREENS[item] && <span className="soon">soon</span>}
                       </button>
                     ))}
                   </div>
@@ -111,7 +142,17 @@ export default function AppShell({ session, onLogout, children }) {
               </div>
             </div>
           </section>
-        ) : (children ?? null)}
+        )}
+
+        {/* Open screens stay mounted so unsaved work is kept when switching tabs */}
+        {tabs.map(id => {
+          const Screen = SCREENS[id].component;
+          return (
+            <div key={id} style={{ display: !menuOpen && active === id ? 'contents' : 'none' }}>
+              <Screen session={session} active={!menuOpen && active === id} onNotice={setNotice} />
+            </div>
+          );
+        })}
       </main>
 
       <footer className="statusbar">

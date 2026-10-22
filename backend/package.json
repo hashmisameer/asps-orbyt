@@ -8,7 +8,8 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "migrate": "node src/db/migrate.js",
-    "seed": "node src/db/seed.js"
+    "seed": "node src/db/seed.js",
+    "seed:orders": "node src/db/seed-order-masters.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

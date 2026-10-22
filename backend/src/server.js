@@ -5,6 +5,7 @@ import { pool } from './db/pool.js';
 import { errorHandler } from './middleware/errors.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { companyRouter } from './modules/companies/company.routes.js';
+import { ordersRouter } from './modules/orders/orders.routes.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -23,6 +24,7 @@ app.get('/api/health', async (_req, res) => {
 
 app.use('/api/auth', authRouter);
 app.use('/api/companies', companyRouter);
+app.use('/api/orders', ordersRouter);
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));
 app.use(errorHandler);

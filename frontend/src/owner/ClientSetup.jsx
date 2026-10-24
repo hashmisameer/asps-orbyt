@@ -1,19 +1,18 @@
-// Owner console: create or change one client — company details, licence, and the
-// modules, screens and reports this client gets. Anything left unticked is hidden from the client.
+// Owner console: create or change one client.
+//   Details tab          company, contact person, licence
+//   Access & add-ons tab modules, screens, functions, reports and tools this client gets, with paid till dates
+// Anything left unticked (or an add-on past its paid till date) is hidden from the client.
 import { useEffect, useState } from 'react';
 import { ownerApi } from '../api.js';
 import DateInput from '../components/DateInput.jsx';
+import AccessEditor from './AccessEditor.jsx';
 
 const blank = {
   name: '', code: '', gstin: '', addressLine: '', city: '', state: '', pin: '', country: 'India',
   contactName: '', contactDesignation: '', contactMobile: '', contactEmail: '',
   licenceValidTill: '', maxUsers: '10', status: 'active',
-  adminUsername: 'admin', adminPassword: '', modules: [], features: []
+  adminUsername: 'admin', adminPassword: '', modules: [], features: [], addons: {}
 };
-
-const CheckIcon = ({ state }) => (
-  <span className={`ocb ${state}`} aria-hidden="true" />
-);
 
 export default function ClientSetup({ id, catalog, onBack, onCreated }) {
   const isNew = id === null;
@@ -25,11 +24,12 @@ export default function ClientSetup({ id, catalog, onBack, onCreated }) {
   const [message, setMessage] = useState('');
   const [resetOpen, setResetOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [tab, setTab] = useState('details');      // details | access
 
   useEffect(() => {
     if (isNew) return;
     ownerApi(`/companies/${id}`)
-      .then(c => { const f = { ...c, maxUsers: String(c.maxUsers) }; setForm(f); setSaved(f); })
+      .then(c => { const f = { ...c, addons: c.addons || {}, maxUsers: String(c.maxUsers) }; setForm(f); setSaved(f); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [id, isNew]);
@@ -37,30 +37,6 @@ export default function ClientSetup({ id, catalog, onBack, onCreated }) {
   const set = (patch) => { setMessage(''); setForm(f => ({ ...f, ...patch })); };
   const field = (key) => ({ value: form[key] ?? '', onChange: e => set({ [key]: e.target.value }) });
   const dirty = isNew ? JSON.stringify(form) !== JSON.stringify(blank) : JSON.stringify(form) !== JSON.stringify(saved);
-
-  // ---------- module and screen ticks ----------
-  const moduleState = (m) => {
-    if (m.alwaysOn) return 'y';
-    if (!form.modules.includes(m.code)) return '';
-    const on = m.features.filter(f => form.features.includes(f.code)).length;
-    return on === m.features.length ? 'y' : 'h';
-  };
-  function toggleModule(m) {
-    if (m.alwaysOn) return;
-    const codes = m.features.map(f => f.code);
-    if (form.modules.includes(m.code)) {
-      set({ modules: form.modules.filter(c => c !== m.code), features: form.features.filter(c => !codes.includes(c)) });
-    } else {
-      set({ modules: [...form.modules, m.code], features: [...new Set([...form.features, ...codes])] });
-    }
-  }
-  function toggleFeature(m, code) {
-    if (m.alwaysOn) return;
-    const has = form.features.includes(code);
-    const features = has ? form.features.filter(c => c !== code) : [...form.features, code];
-    const modules = form.modules.includes(m.code) ? form.modules : [...form.modules, m.code];
-    set({ features, modules });
-  }
 
   async function save() {
     setError(''); setMessage(''); setBusy(true);
@@ -71,7 +47,7 @@ export default function ClientSetup({ id, catalog, onBack, onCreated }) {
         onCreated(r.id);
       } else {
         const c = await ownerApi(`/companies/${id}`, { method: 'PUT', body });
-        const f = { ...c, maxUsers: String(c.maxUsers) };
+        const f = { ...c, addons: c.addons || {}, maxUsers: String(c.maxUsers) };
         setForm(f); setSaved(f);
         setMessage('Saved. The client sees the change the next time they sign in or reload.');
       }
@@ -134,7 +110,12 @@ export default function ClientSetup({ id, catalog, onBack, onCreated }) {
         </div>
       )}
 
-      <div className="owner-cols">
+      <div className="cs-tabs" role="tablist" aria-label="Client sections">
+        <button type="button" role="tab" aria-selected={tab === 'details'} className={tab === 'details' ? 'on' : ''} onClick={() => setTab('details')}>Details</button>
+        <button type="button" role="tab" aria-selected={tab === 'access'} className={tab === 'access' ? 'on' : ''} onClick={() => setTab('access')}>Access &amp; add-ons</button>
+      </div>
+
+      {tab === 'details' && <div className="owner-cols">
         <section className="panel">
           <div className="panel-head">CLIENT COMPANY</div>
           <div className="form-grid owner-grid">
@@ -180,47 +161,13 @@ export default function ClientSetup({ id, catalog, onBack, onCreated }) {
             )}
           </div>
         </section>
-      </div>
+      </div>}
 
-      <section className="panel">
-        <div className="panel-head panel-head-row"><span>MODULES, SCREENS &amp; REPORTS</span>
-          <span className="hint">Tick a module, then the screens, reports and top bar tools this client gets. Anything unticked is hidden from them completely.</span></div>
-        <div className="mod-grid">
-          {catalog.map(m => {
-            const state = moduleState(m);
-            const on = m.alwaysOn || form.modules.includes(m.code);
-            const groups = [...new Set(m.features.map(f => f.group))];
-            const count = m.features.filter(f => m.alwaysOn || form.features.includes(f.code)).length;
-            return (
-              <div key={m.code} className={`mod-card ${on ? 'on' : 'off'}`}>
-                <button type="button" className="mod-head" onClick={() => toggleModule(m)} disabled={m.alwaysOn}
-                  aria-pressed={on} aria-label={`${m.name} module`}>
-                  <CheckIcon state={state} />
-                  <span>{m.name}</span>
-                  <span className="mod-count">{m.alwaysOn ? 'Always on' : on ? `${count} of ${m.features.length}` : 'Off'}</span>
-                </button>
-                <div className="mod-body">
-                  {groups.map(g => (
-                    <div key={g} className="mod-group">
-                      <div className="mod-group-title">{g.toUpperCase()}</div>
-                      {m.features.filter(f => f.group === g).map(f => {
-                        const ticked = m.alwaysOn || form.features.includes(f.code);
-                        return (
-                          <label key={f.code} className="mod-item">
-                            <input type="checkbox" checked={ticked} disabled={m.alwaysOn} onChange={() => toggleFeature(m, f.code)} />
-                            {f.name}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <p className="hint" style={{ padding: '0 12px 12px', margin: 0 }}>Admin (users, roles, settings) is always on, so the client's head can manage their own users.</p>
-      </section>
+      {tab === 'access' && (
+        <section className="panel acc-panel">
+          <AccessEditor catalog={catalog} form={form} set={set} />
+        </section>
+      )}
     </div>
   );
 }

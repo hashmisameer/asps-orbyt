@@ -80,6 +80,15 @@ export async function updateCatalogItem(owner, level, code, body) {
   }
   await withTransaction(async (db) => {
     await db.query(`UPDATE ${table} SET is_addon = $2, price = $3, price_per = $4 WHERE code = $1`, [code, isAddon, price, pricePer]);
+    // Base -> Add-on: clients that already have it keep it till their licence date (or a year), so nothing vanishes today
+    if (isAddon && !before.is_addon) {
+      const link = table === 'modules'
+        ? { t: 'company_modules', col: 'module_code', extra: 'AND x.enabled' }
+        : { t: 'company_features', col: 'feature_code', extra: '' };
+      await db.query(
+        `UPDATE ${link.t} x SET paid_till = COALESCE(c.licence_valid_till, CURRENT_DATE + 365)
+           FROM companies c WHERE c.id = x.company_id AND x.${link.col} = $1 AND x.paid_till IS NULL ${link.extra}`, [code]);
+    }
     await ownerAudit(db, owner.id, null, 'CATALOGUE_PRICE_CHANGED', {
       code, name: before.name,
       from: { isAddon: before.is_addon, price: money(before.price), per: before.price_per },

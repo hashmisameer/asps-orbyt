@@ -5,6 +5,7 @@ import { OrbitMark, Wordmark } from '../components/Logo.jsx';
 import ClientList from './ClientList.jsx';
 import ClientSetup from './ClientSetup.jsx';
 import OwnerAudit from './OwnerAudit.jsx';
+import CataloguePrices from './CataloguePrices.jsx';
 
 export default function OwnerApp() {
   const [owner, setOwner] = useState(null);
@@ -90,11 +91,13 @@ function OwnerConsole({ owner, onLogout }) {
       </header>
       <nav className="owner-nav" aria-label="Owner console">
         <button type="button" className={tab === 'clients' ? 'on' : ''} onClick={() => { setTab('clients'); setEditing(null); }}>Clients</button>
+        <button type="button" className={tab === 'catalogue' ? 'on' : ''} onClick={() => setTab('catalogue')}>Catalogue &amp; prices</button>
         <button type="button" className={tab === 'audit' ? 'on' : ''} onClick={() => setTab('audit')}>Owner audit log</button>
       </nav>
       <main className="owner-main">
         {error && <div className="alert alert-error" role="alert">{error}</div>}
         {tab === 'audit' && <OwnerAudit catalog={catalog} />}
+        {tab === 'catalogue' && catalog && <CataloguePrices catalog={catalog} onChange={setCatalog} />}
         {tab === 'clients' && editing === null && <ClientList onOpen={setEditing} />}
         {tab === 'clients' && editing !== null && catalog && (
           <ClientSetup key={editing} id={editing === 'new' ? null : editing} catalog={catalog}

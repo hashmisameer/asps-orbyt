@@ -21,10 +21,10 @@ export default function ClientList({ onOpen }) {
       <section className="panel">
         <div className="panel-head">ALL CLIENTS{rows ? ` · ${rows.length}` : ''}</div>
         <table className="og">
-          <thead><tr><th>Code</th><th>Client</th><th>City</th><th className="num">Modules on</th><th className="num">Users</th><th>Licence valid till</th><th>Status</th></tr></thead>
+          <thead><tr><th>Code</th><th>Client</th><th>City</th><th className="num">Modules on</th><th className="num">Users</th><th>Licence valid till</th><th>Add-ons</th><th>Status</th></tr></thead>
           <tbody>
-            {rows === null && !error && <tr><td colSpan={7} className="empty-row">Loading…</td></tr>}
-            {rows && rows.length === 0 && <tr><td colSpan={7} className="empty-row">No clients yet. Click "+ New client".</td></tr>}
+            {rows === null && !error && <tr><td colSpan={8} className="empty-row">Loading…</td></tr>}
+            {rows && rows.length === 0 && <tr><td colSpan={8} className="empty-row">No clients yet. Click "+ New client".</td></tr>}
             {rows && rows.map(r => (
               <tr key={r.id} className="find-row" tabIndex={0} onClick={() => onOpen(r.id)} onKeyDown={e => { if (e.key === 'Enter') onOpen(r.id); }}>
                 <td className="order-no">{r.code}</td>
@@ -33,6 +33,9 @@ export default function ClientList({ onOpen }) {
                 <td className="num">{r.modulesOn}</td>
                 <td className="num">{r.usersUsed} / {r.maxUsers}</td>
                 <td>{fmtDate(r.licenceValidTill)}</td>
+                <td>{r.addonsExpiring > 0
+                  ? <span className="chip chip-amber" title="Add-ons ending within 15 days">{r.addonsExpiring} ending soon</span>
+                  : <span className="hint">—</span>}</td>
                 <td><span className={`chip ${r.status === 'active' ? 'chip-teal' : 'chip-amber'}`}>{r.status === 'active' ? 'Active' : 'Suspended'}</span></td>
               </tr>
             ))}

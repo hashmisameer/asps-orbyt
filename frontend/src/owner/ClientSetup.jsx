@@ -184,7 +184,7 @@ export default function ClientSetup({ id, catalog, onBack, onCreated }) {
 
       <section className="panel">
         <div className="panel-head panel-head-row"><span>MODULES, SCREENS &amp; REPORTS</span>
-          <span className="hint">Tick a module, then the screens and reports this client gets. Anything unticked is hidden from them completely.</span></div>
+          <span className="hint">Tick a module, then the screens, reports and top bar tools this client gets. Anything unticked is hidden from them completely.</span></div>
         <div className="mod-grid">
           {catalog.map(m => {
             const state = moduleState(m);

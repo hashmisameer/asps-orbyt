@@ -59,6 +59,7 @@ export async function getUserAccess(userId, companyId) {
     const actions = user.is_admin ? r.actions : (r.role_actions || []).filter(a => r.actions.includes(a));
     if (!actions.includes('view')) continue;     // no view = the screen is hidden
     permissions[r.code] = actions;
+    if (r.kind === 'tool') continue;             // top bar icons: in permissions, never in the menu
 
     let mod = menu.find(m => m.code === r.module_code);
     if (!mod) { mod = { code: r.module_code, name: r.module_name, groups: [] }; menu.push(mod); }

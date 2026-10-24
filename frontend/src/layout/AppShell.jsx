@@ -52,6 +52,15 @@ export default function AppShell({ session, onLogout }) {
   const menu = session.menu || [];
   const current = menu.find(m => m.code === mod) || menu[0];
 
+  // Top bar icons: only the ones the owner gave this client (and this user's role may see)
+  const hasTool = (code) => Boolean(session.permissions?.[code]);
+  const quickLinks = [
+    { code: 'tool.favourites', label: 'Favourites', icon: Icon.star },
+    { code: 'tool.approvals', label: 'Approvals', icon: Icon.approvals },
+    { code: 'tool.calendar', label: 'T&A calendar', icon: Icon.calendar },
+    { code: 'tool.reports', label: 'Reports', icon: Icon.reports }
+  ].filter(t => hasTool(t.code));
+
   // Messages disappear after a few seconds
   useEffect(() => {
     if (!notice) return undefined;
@@ -106,8 +115,8 @@ export default function AppShell({ session, onLogout }) {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
-            <button type="button" className="icon-btn" aria-label="Help">{Icon.help}</button>
-            <button type="button" className="icon-btn" aria-label="Notifications">{Icon.bell}</button>
+            {hasTool('tool.help') && <button type="button" className="icon-btn" aria-label="Help" title="Help">{Icon.help}</button>}
+            {hasTool('tool.notifications') && <button type="button" className="icon-btn" aria-label="Notifications" title="Notifications">{Icon.bell}</button>}
             <div className="user-wrap">
               <button type="button" className="user-btn" aria-haspopup="menu" aria-expanded={userMenu} aria-label={`Account: ${user.username}`}
                 onClick={() => setUserMenu(o => !o)}>
@@ -132,11 +141,10 @@ export default function AppShell({ session, onLogout }) {
             {menuOpen ? Icon.close : Icon.menu}{menuOpen ? 'Close menu' : 'Menu'}
           </button>
           <span className="vsep" aria-hidden="true" />
-          <button type="button" className="tool-btn icon-only" title="Favourites" aria-label="Favourites">{Icon.star}</button>
-          <button type="button" className="tool-btn icon-only" title="Approvals" aria-label="Approvals">{Icon.approvals}</button>
-          <button type="button" className="tool-btn icon-only" title="T&A calendar" aria-label="T&A calendar">{Icon.calendar}</button>
-          <button type="button" className="tool-btn icon-only" title="Reports" aria-label="Reports">{Icon.reports}</button>
-          <span className="vsep" aria-hidden="true" />
+          {quickLinks.map(t => (
+            <button key={t.code} type="button" className="tool-btn icon-only" title={t.label} aria-label={t.label}>{t.icon}</button>
+          ))}
+          {quickLinks.length > 0 && <span className="vsep" aria-hidden="true" />}
           {/* Open screens sit in the same row, so no extra strip is needed */}
           <div className="tabs" role="tablist" aria-label="Open screens">
             <button type="button" role="tab" aria-selected={active === 'home' && !menuOpen} className={`tab ${active === 'home' && !menuOpen ? 'active' : ''}`}

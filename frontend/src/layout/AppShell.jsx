@@ -125,7 +125,6 @@ export default function AppShell({ session, onLogout }) {
                 </>
               )}
             </div>
-            <button type="button" className="icon-btn" aria-label="Log out" style={{ color: 'var(--danger)' }} onClick={onLogout}>{Icon.power}</button>
           </div>
         </div>
         <div className="topbar-row2">

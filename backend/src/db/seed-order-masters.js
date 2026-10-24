@@ -66,7 +66,12 @@ async function seed() {
       ['packing', 'CARTONS', 'PCS', [['CARTON 5 PLY 60X40X40', null, null]]]
     ];
     for (const [type, gname, uom, items] of GROUPS) {
-      await db.query('INSERT INTO item_groups (company_id, item_type, name, uom) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING', [cid, type, gname, uom]);
+      // Issue process from the item type: fabric -> cutting, trims -> stitching, packing -> finishing
+      const processCode = { fabric: 'cutting', trims: 'stitching', packing: 'finishing' }[type];
+      await db.query(
+        `INSERT INTO item_groups (company_id, item_type, name, uom, process_id)
+         VALUES ($1, $2, $3, $4, (SELECT id FROM issue_processes WHERE company_id = $1 AND code = $5))
+         ON CONFLICT DO NOTHING`, [cid, type, gname, uom, processCode]);
       const gid = (await db.query('SELECT id FROM item_groups WHERE company_id = $1 AND item_type = $2 AND lower(name) = lower($3)', [cid, type, gname])).rows[0].id;
       for (const [name, nature, width] of items) {
         await db.query('INSERT INTO items (company_id, group_id, name, uom, item_nature, width) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING',

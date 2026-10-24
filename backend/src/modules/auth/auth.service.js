@@ -95,6 +95,23 @@ export async function getSession(userId, companyId) {
   };
 }
 
+// A signed-in user changes their own password (the current one must be right)
+export async function changePassword(userId, companyId, { currentPassword, newPassword }) {
+  if (!currentPassword || !newPassword) throw new AppError(400, 'Enter your current password and the new password.');
+  if (String(newPassword).length < 8) throw new AppError(400, 'The new password must have at least 8 characters.');
+  if (currentPassword === newPassword) throw new AppError(400, 'The new password must be different from the current one.');
+  const user = (await query('SELECT password_hash FROM users WHERE id = $1 AND company_id = $2 AND is_active', [userId, companyId]))[0];
+  if (!user) throw new AppError(401, 'Your account is not active. Contact your administrator.');
+  if (!(await bcrypt.compare(currentPassword, user.password_hash))) {
+    await audit(companyId, userId, 'PASSWORD_CHANGE_FAILED', null);
+    throw new AppError(400, 'Your current password is wrong.');
+  }
+  const hash = await bcrypt.hash(String(newPassword), 12);
+  await query('UPDATE users SET password_hash = $3, updated_at = now() WHERE id = $1 AND company_id = $2', [userId, companyId, hash]);
+  await audit(companyId, userId, 'PASSWORD_CHANGED', null);
+  return { ok: true };
+}
+
 export async function logout(userId, companyId) {
   await audit(companyId, userId, 'LOGOUT');
 }

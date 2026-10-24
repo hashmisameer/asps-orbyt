@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { OrbitMark, Wordmark } from '../components/Logo.jsx';
 import { READY_SCREENS } from './menu.js';
+import ChangePassword from '../components/ChangePassword.jsx';
 import OrderEntry from '../screens/OrderEntry.jsx';
 import Costing from '../screens/Costing.jsx';
+import Bom from '../screens/Bom.jsx';
 import SimpleMaster from '../screens/SimpleMaster.jsx';
 
 // Built screens: id -> component, tab title and breadcrumb
 const SCREENS = {
   orderEntry: { component: OrderEntry, title: 'Order entry', crumb: 'Order › Order entry' },
   costing: { component: Costing, title: 'Costing', crumb: 'Order › Costing' },
+  bom: { component: Bom, title: 'BOM', crumb: 'Order › BOM' },
   buyer: { component: SimpleMaster, props: { kind: 'buyer' }, title: 'Buyer', crumb: 'Masters › Buyer' },
   season: { component: SimpleMaster, props: { kind: 'season' }, title: 'Season', crumb: 'Masters › Season' },
   currency: { component: SimpleMaster, props: { kind: 'currency' }, title: 'Currency', crumb: 'Masters › Currency' },
@@ -40,6 +43,8 @@ export default function AppShell({ session, onLogout }) {
   const [mod, setMod] = useState('masters');
   const [notice, setNotice] = useState('');
   const [q, setQ] = useState('');                  // search inside the menu
+  const [userMenu, setUserMenu] = useState(false); // small menu under the user button
+  const [pwOpen, setPwOpen] = useState(false);
   const [tabs, setTabs] = useState([]);          // open screens, e.g. ['orderEntry']
   const [active, setActive] = useState('home');  // 'home' or a screen id
 
@@ -103,10 +108,23 @@ export default function AppShell({ session, onLogout }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
             <button type="button" className="icon-btn" aria-label="Help">{Icon.help}</button>
             <button type="button" className="icon-btn" aria-label="Notifications">{Icon.bell}</button>
-            <button type="button" className="user-btn" aria-label={`Account: ${user.username}`}>
-              <span className="avatar">{initials(user.fullName)}</span>
-              <span className="user-text"><b>{user.fullName}</b><span>{user.role}</span></span>
-            </button>
+            <div className="user-wrap">
+              <button type="button" className="user-btn" aria-haspopup="menu" aria-expanded={userMenu} aria-label={`Account: ${user.username}`}
+                onClick={() => setUserMenu(o => !o)}>
+                <span className="avatar">{initials(user.fullName)}</span>
+                <span className="user-text"><b>{user.fullName}</b><span>{user.role}</span></span>
+              </button>
+              {userMenu && (
+                <>
+                  <div className="user-menu-dim" onMouseDown={() => setUserMenu(false)} />
+                  <div className="user-menu" role="menu">
+                    <div className="user-menu-head"><b>{user.fullName}</b><span>{user.username} · {user.role}</span></div>
+                    <button type="button" role="menuitem" onClick={() => { setUserMenu(false); setPwOpen(true); }}>Change password</button>
+                    <button type="button" role="menuitem" className="danger" onClick={() => { setUserMenu(false); onLogout(); }}>Log out</button>
+                  </div>
+                </>
+              )}
+            </div>
             <button type="button" className="icon-btn" aria-label="Log out" style={{ color: 'var(--danger)' }} onClick={onLogout}>{Icon.power}</button>
           </div>
         </div>
@@ -144,6 +162,7 @@ export default function AppShell({ session, onLogout }) {
           <div className="alert alert-warn" role="status">Your ORBYT licence ends on {fmtDate(licence.validTill)} ({licence.daysLeft === 0 ? 'today' : `${licence.daysLeft} day${licence.daysLeft === 1 ? '' : 's'} left`}). Contact ORBYT support to renew.</div>
         )}
         {notice && <div className="alert alert-info" role="status">{notice}</div>}
+        {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} onDone={() => { setPwOpen(false); setNotice('Your password has been changed. Use the new one next time you sign in.'); }} />}
 
         {menuOpen && !current && (
           <section className="menu-panel" aria-label="Menu"><div className="menu-body"><h2>No screens yet</h2><p>Your role has no screens yet. Ask your administrator for access.</p></div></section>

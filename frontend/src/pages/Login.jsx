@@ -68,7 +68,7 @@ export default function Login({ onSignedIn }) {
 
             <div>
               <label className="label" htmlFor="username">User ID or email</label>
-              <input id="username" className={`input ${userMissing ? 'invalid' : ''}`} autoComplete="username" placeholder="rahul.k"
+              <input id="username" className={`input ${userMissing ? 'invalid' : ''}`} autoComplete="username" placeholder="username"
                 value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
               {userMissing && <div className="field-error">Enter your user ID or email.</div>}
             </div>
@@ -77,7 +77,7 @@ export default function Login({ onSignedIn }) {
               <label className="label" htmlFor="password">Password</label>
               <div className="pw-wrap">
                 <input id="password" className={`input ${passMissing ? 'invalid' : ''}`} type={show ? 'text' : 'password'}
-                  autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                  autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder='password' />
                 <button type="button" className="pw-toggle" onClick={() => setShow(!show)} aria-label={show ? 'Hide password' : 'Show password'}>
                   {show ? 'Hide' : 'Show'}
                 </button>

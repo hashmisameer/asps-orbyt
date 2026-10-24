@@ -41,7 +41,9 @@ export const MASTERS = {
     fields: [
       { key: 'itemType', column: 'item_type', label: 'Item type', required: true, options: ITEM_TYPES },
       { key: 'name', column: 'name', label: 'Summary item', required: true, upper: true, max: 120, unique: true, uniqueWith: ['item_type'] },
-      { key: 'uom', column: 'uom', label: 'Usual UOM', upper: true, max: 10 }
+      { key: 'uom', column: 'uom', label: 'Usual UOM', upper: true, max: 10 },
+      { key: 'processId', column: 'process_id', label: 'Issue process', required: true,
+        ref: { table: 'issue_processes', label: 'name' } }
     ]
   },
   item: {
@@ -56,7 +58,9 @@ export const MASTERS = {
       { key: 'hsn', column: 'hsn', label: 'HSN', max: 12 },
       { key: 'width', column: 'width', label: 'Width', number: true },
       { key: 'gsm', column: 'gsm', label: 'GSM', number: true },
-      { key: 'composition', column: 'composition', label: 'Composition', max: 120 }
+      { key: 'composition', column: 'composition', label: 'Composition', max: 120 },
+      // Empty = same process as its summary item
+      { key: 'processId', column: 'process_id', label: 'Issue process', ref: { table: 'issue_processes', label: 'name' } }
     ]
   }
 };

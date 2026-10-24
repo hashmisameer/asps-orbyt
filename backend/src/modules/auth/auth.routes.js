@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../middleware/errors.js';
 import { requireAuth } from '../../middleware/auth.js';
-import { login, getSession, logout } from './auth.service.js';
+import { login, getSession, logout, changePassword } from './auth.service.js';
 
 export const authRouter = Router();
 
@@ -14,6 +14,11 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
 // GET /api/auth/me  -> current user, company, unit, FY and enabled modules
 authRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
   res.json(await getSession(req.user.id, req.user.companyId));
+}));
+
+// POST /api/auth/change-password  { currentPassword, newPassword }
+authRouter.post('/change-password', requireAuth, asyncHandler(async (req, res) => {
+  res.json(await changePassword(req.user.id, req.user.companyId, req.body || {}));
 }));
 
 // POST /api/auth/logout  -> records the logout in the audit log

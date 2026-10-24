@@ -9,6 +9,7 @@ import { ordersRouter } from './modules/orders/orders.routes.js';
 import { ownerRouter } from './modules/owner/owner.routes.js';
 import { mastersRouter } from './modules/masters/masters.routes.js';
 import { costingRouter } from './modules/costing/costing.routes.js';
+import { bomRouter } from './modules/bom/bom.routes.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -31,6 +32,7 @@ app.use('/api/orders', ordersRouter);
 app.use('/api/owner', ownerRouter);
 app.use('/api/masters', mastersRouter);
 app.use('/api/costing', costingRouter);
+app.use('/api/bom', bomRouter);
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));
 app.use(errorHandler);

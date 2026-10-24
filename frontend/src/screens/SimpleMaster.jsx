@@ -29,7 +29,8 @@ export const MASTER_SCREENS = {
     fields: [
       { key: 'itemType', label: 'Item type', required: true, width: 150, options: [['fabric', 'Fabric'], ['trims', 'Trims'], ['packing', 'Packing']] },
       { key: 'name', label: 'Summary item', required: true, upper: true, max: 120, width: 340, hint: 'e.g. EXPORT PURCHASE FABRIC' },
-      { key: 'uom', label: 'Usual UOM', upper: true, max: 10, width: 110, hint: 'e.g. MTR' }
+      { key: 'uom', label: 'Usual UOM', upper: true, max: 10, width: 110, hint: 'e.g. MTR' },
+      { key: 'processId', label: 'Issue process', required: true, ref: true, width: 160, hint: 'Department this material is issued to' }
     ]
   },
   item: {
@@ -43,7 +44,8 @@ export const MASTER_SCREENS = {
       { key: 'hsn', label: 'HSN', max: 12, width: 110 },
       { key: 'width', label: 'Width', number: true, width: 90 },
       { key: 'gsm', label: 'GSM', number: true, width: 90 },
-      { key: 'composition', label: 'Composition', max: 120, width: 220, hint: 'e.g. 100% cotton' }
+      { key: 'composition', label: 'Composition', max: 120, width: 220, hint: 'e.g. 100% cotton' },
+      { key: 'processId', label: 'Issue process', ref: true, width: 200, empty: 'Same as summary item', hint: 'Leave as "Same as summary item" unless this item goes to a different department' }
     ]
   }
 };
@@ -64,7 +66,7 @@ export default function SimpleMaster({ kind, active, session }) {
   const load = () => api(`/masters/${kind}`).then(r => { setRows(r.rows); setRefs(r.refs || {}); }).catch(e => setError(e.message));
   // What a value looks like in the list: option names and dropdown labels instead of codes and ids
   const show = (f, v) => {
-    if (v === '' || v === null || v === undefined) return '—';
+    if (v === '' || v === null || v === undefined) return f.empty ? 'Same as summary' : '—';
     if (f.options) return (f.options.find(o => o[0] === v) || [v, v])[1];
     if (f.ref) return (refs[f.key] || []).find(o => o.id === String(v))?.label || v;
     return String(v);
@@ -126,7 +128,7 @@ export default function SimpleMaster({ kind, active, session }) {
               <span>{f.label} {f.required && <span className="req">*</span>}</span>
               {f.options || f.ref ? (
                 <select className="inp" value={form[f.key]} onChange={e => set({ [f.key]: e.target.value })}>
-                  <option value="">Select</option>
+                  <option value="">{f.empty || 'Select'}</option>
                   {f.options
                     ? f.options.map(([v, label]) => <option key={v} value={v}>{label}</option>)
                     : (refs[f.key] || []).filter(o => o.isActive || o.id === String(form[f.key])).map(o => <option key={o.id} value={o.id}>{o.label}</option>)}

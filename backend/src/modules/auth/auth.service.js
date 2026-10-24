@@ -91,7 +91,8 @@ export async function getSession(userId, companyId) {
     financialYear: fy ? { label: fy.label, short: fy.short_label } : null,
     licence: state.licence,
     menu: access.menu,                  // modules -> groups -> screens/reports
-    permissions: access.permissions     // e.g. { 'order.entry': ['view', 'create', 'edit'] }
+    permissions: access.permissions,    // e.g. { 'order.entry': ['view', 'create', 'edit'] }
+    addonWarnings: access.addonWarnings // admins only: add-ons ending within 15 days
   };
 }
 

@@ -20,6 +20,10 @@ ownerRouter.use(requireOwner);
 
 ownerRouter.get('/me', (req, res) => res.json({ owner: req.owner }));
 ownerRouter.get('/catalog', asyncHandler(async (_req, res) => res.json(await owner.getCatalog())));
+// Base or Add-on and default price: PUT /catalog/modules/production or /catalog/features/order.costing
+ownerRouter.put('/catalog/:level/:code', asyncHandler(async (req, res) => {
+  res.json(await owner.updateCatalogItem(req.owner, req.params.level, req.params.code, req.body || {}));
+}));
 ownerRouter.get('/companies', asyncHandler(async (_req, res) => res.json(await owner.listCompanies())));
 ownerRouter.post('/companies', asyncHandler(async (req, res) => {
   res.status(201).json(await owner.createCompany(req.owner, req.body || {}));

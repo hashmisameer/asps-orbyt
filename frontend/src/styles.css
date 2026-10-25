@@ -435,3 +435,28 @@ a { color: var(--teal); }
 .cat-per { height: 30px; width: 100px; font-size: 12.5px; padding: 0 6px; }
 .cat-act { display: flex; gap: 6px; align-items: center; }
 .tb-sm { height: 28px; padding: 0 10px; font-size: 12px; }
+
+/* ---------- Party master ---------- */
+.form-grid.party-head { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.party-checks { display: flex; align-items: center; gap: 18px; min-height: 36px; flex-wrap: wrap; }
+.party-checks label { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap; }
+.party-checks input, .party-def input { width: 16px; height: 16px; accent-color: var(--teal); margin: 0; }
+.inp-bad { border-color: var(--danger) !important; background: var(--danger-bg) !important; }
+.field-hint { font-size: 11px; color: var(--teal); font-weight: 500; min-height: 14px; }
+.field-bad { font-size: 11px; color: var(--danger); font-weight: 500; min-height: 14px; }
+.party-grid { padding: 0; margin: 0 18px 12px; }
+.party-grid .og { min-width: 1900px; }
+.party-grid .stick { position: sticky; left: 0; z-index: 2; background: var(--white); width: 36px; box-shadow: 1px 0 0 var(--border); }
+.party-grid th.stick { z-index: 3; }
+.party-grid .w-name { min-width: 180px; }
+.party-grid .w-adr { min-width: 170px; }
+.party-grid td.w-place, .party-grid .w-place { min-width: 140px; }
+.party-grid .w-pin { min-width: 80px; }
+.party-grid .w-phone { min-width: 120px; }
+.party-grid .w-mail { min-width: 170px; }
+.party-grid .w-person { min-width: 130px; }
+.party-grid .w-gst { min-width: 150px; text-transform: uppercase; }
+.party-def label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.party-foot { display: flex; align-items: center; gap: 14px; padding: 0 18px 14px; }
+.add-line { border: 1px dashed var(--border-strong); background: var(--white); border-radius: 6px; height: 32px; padding: 0 14px; color: var(--teal); font-weight: 600; cursor: pointer; }
+.add-line:hover { border-color: var(--teal); background: var(--teal-light); }

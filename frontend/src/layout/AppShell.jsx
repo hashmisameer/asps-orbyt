@@ -6,13 +6,14 @@ import OrderEntry from '../screens/OrderEntry.jsx';
 import Costing from '../screens/Costing.jsx';
 import Bom from '../screens/Bom.jsx';
 import SimpleMaster from '../screens/SimpleMaster.jsx';
+import PartyMaster from '../screens/PartyMaster.jsx';
 
 // Built screens: id -> component, tab title and breadcrumb
 const SCREENS = {
   orderEntry: { component: OrderEntry, title: 'Order entry', crumb: 'Order › Order entry' },
   costing: { component: Costing, title: 'Costing', crumb: 'Order › Costing' },
   bom: { component: Bom, title: 'BOM', crumb: 'Order › BOM' },
-  buyer: { component: SimpleMaster, props: { kind: 'buyer' }, title: 'Buyer', crumb: 'Masters › Buyer' },
+  party: { component: PartyMaster, title: 'Party master', crumb: 'Masters › Party master' },
   season: { component: SimpleMaster, props: { kind: 'season' }, title: 'Season', crumb: 'Masters › Season' },
   currency: { component: SimpleMaster, props: { kind: 'currency' }, title: 'Currency', crumb: 'Masters › Currency' },
   itemGroup: { component: SimpleMaster, props: { kind: 'item_group' }, title: 'Summary items', crumb: 'Masters › Item group' },

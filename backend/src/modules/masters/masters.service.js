@@ -1,4 +1,4 @@
-// Simple masters (Buyer, Season, Currency, Item group, Item): a list of rows with a few fields each.
+// Simple masters (Season, Currency, Item group, Item): a list of rows with a few fields each.
 // Each master is described once in MASTERS; the same code lists, adds and edits all of them.
 //
 // Field options:
@@ -14,14 +14,6 @@ export const ITEM_TYPES = ['fabric', 'trims', 'packing'];
 export const ITEM_NATURES = ['Main', 'Contrast', 'Lining', 'Interlining', 'Pocketing', 'Other'];
 
 export const MASTERS = {
-  buyer: {
-    table: 'buyers', feature: 'masters.buyer', label: 'Buyer', order: 'name',
-    fields: [
-      { key: 'code', column: 'code', label: 'Short code', required: true, upper: true, max: 10, unique: true },
-      { key: 'name', column: 'name', label: 'Buyer name', required: true, max: 120 },
-      { key: 'country', column: 'country', label: 'Country', max: 60 }
-    ]
-  },
   season: {
     table: 'seasons', feature: 'masters.season', label: 'Season', order: 'name',
     fields: [

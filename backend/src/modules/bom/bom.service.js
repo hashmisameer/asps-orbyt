@@ -56,7 +56,7 @@ export async function listOrders(companyId, { search, status } = {}) {
 async function finalCostingFor(db, companyId, orderLine) {
   return (await db.query(
     `SELECT c.id, c.costing_no, bu.name AS buyer
-       FROM costings c JOIN buyers bu ON bu.id = c.buyer_id
+       FROM costings c JOIN parties bu ON bu.id = c.buyer_id
       WHERE c.company_id = $1 AND c.costing_type = 'final' AND NOT c.is_deleted
         AND (c.order_line_id = $2 OR (c.order_line_id IS NULL AND c.style_id = $3))
       ORDER BY (c.order_line_id IS NULL), c.updated_at DESC LIMIT 1`,

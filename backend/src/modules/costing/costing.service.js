@@ -50,7 +50,8 @@ export function calcTotals(lines, orderQty) {
 // ---------- dropdown data ----------
 export async function getLookups(companyId) {
   const [buyers, styles, seasons, currencies, colours, ranges, lines] = await Promise.all([
-    query('SELECT id, code, name FROM buyers WHERE company_id = $1 AND is_active ORDER BY name', [companyId]),
+    // Buyers come from Party master (type Buyer or Both)
+    query(`SELECT id, short_code AS code, name, currency_id FROM parties WHERE company_id = $1 AND is_active AND party_type IN ('buyer', 'both') ORDER BY name`, [companyId]),
     query('SELECT id, code, name FROM styles WHERE company_id = $1 AND is_active ORDER BY code', [companyId]),
     query('SELECT id, name FROM seasons WHERE company_id = $1 AND is_active ORDER BY name', [companyId]),
     query('SELECT id, code, name, rate_to_inr FROM currencies WHERE company_id = $1 AND is_active ORDER BY code', [companyId]),
@@ -110,7 +111,7 @@ export async function listCostings(companyId, filters = {}) {
             b.name AS buyer, s.code AS style_code, l.order_no, c.order_qty, c.base_amount, c.total_amount, cur.code AS currency,
             c.conversion_rate
        FROM costings c
-       JOIN buyers b ON b.id = c.buyer_id
+       JOIN parties b ON b.id = c.buyer_id
        JOIN styles s ON s.id = c.style_id
        JOIN currencies cur ON cur.id = c.currency_id
        LEFT JOIN order_lines l ON l.id = c.order_line_id
@@ -198,7 +199,7 @@ async function readCosting(db, companyId, body) {
 
   const missing = [];
   if (!TYPES.includes(h.type)) missing.push('costing type');
-  if (!(await belongs(db, 'buyers', companyId, h.buyerId))) missing.push('buyer');
+  if (!h.buyerId || !(await db.query(`SELECT 1 FROM parties WHERE id = $1 AND company_id = $2 AND party_type IN ('buyer', 'both')`, [h.buyerId, companyId])).rows.length) missing.push('buyer');
   if (!(await belongs(db, 'styles', companyId, h.styleId))) missing.push('style no.');
   if (!Number.isInteger(h.orderQty) || h.orderQty <= 0) missing.push('order qty');
   if (!MODES.includes(h.shipMode)) missing.push('ship mode');

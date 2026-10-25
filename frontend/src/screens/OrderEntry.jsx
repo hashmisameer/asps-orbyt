@@ -41,7 +41,9 @@ const fromServer = (l) => ({
 
 const blankHeader = () => ({ brandId: '', productCategoryId: '', styleId: '', styleText: '', deviation: '2', remarks: '' });
 
-export default function OrderEntry({ active, onNotice }) {
+export default function OrderEntry({ active, onNotice, session }) {
+  // Functions and reports the owner gave this client (hidden when switched off)
+  const has = (code) => Boolean(session?.permissions?.[code]);
   const [lookups, setLookups] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [order, setOrder] = useState(null);         // saved order from the server, or null for a new one
@@ -100,7 +102,8 @@ export default function OrderEntry({ active, onNotice }) {
   const addLine = () => {
     setMessage('');
     const key = newKey();
-    setLines(ls => [...ls, { ...blankLine(ls[ls.length - 1]), key }]);
+    // "Copy previous line" fills dates, dispatch mode and colour from the line above
+    setLines(ls => [...ls, { ...blankLine(has('order.entry.copy_line') ? ls[ls.length - 1] : undefined), key }]);
     setFocusKey(key);
   };
   const removeLine = (key) => setLines(ls => ls.filter(l => l.key !== key));
@@ -251,10 +254,10 @@ export default function OrderEntry({ active, onNotice }) {
         <button type="button" className="tb" onClick={startNew}>+ New (F2)</button>
         <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search (F3)</button>
         <button type="button" className="tb tb-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save (Ctrl+S)'}</button>
-        <span className="tb-sep" aria-hidden="true" />
-        <button type="button" className="tb tb-soon" title="Coming in a later phase" onClick={() => onNotice('Print is coming in a later phase.')}>Print</button>
-        <button type="button" className="tb tb-soon" title="Coming in a later phase" onClick={() => onNotice('Excel import is coming in a later phase.')}>Import lines from Excel</button>
-        <button type="button" className="tb tb-soon" title="Coming in a later phase" style={{ marginLeft: 'auto' }} onClick={() => onNotice('Audit trail screen is coming in a later phase.')}>Audit trail</button>
+        {(has('order.entry.print') || has('order.entry.import_excel')) && <span className="tb-sep" aria-hidden="true" />}
+        {has('order.entry.print') && <button type="button" className="tb tb-soon" title="Coming in a later phase" onClick={() => onNotice('Print is coming in a later phase.')}>Print</button>}
+        {has('order.entry.import_excel') && <button type="button" className="tb tb-soon" title="Coming in a later phase" onClick={() => onNotice('Excel import is coming in a later phase.')}>Import lines from Excel</button>}
+        {has('order.entry.audit') && <button type="button" className="tb tb-soon" title="Coming in a later phase" style={{ marginLeft: 'auto' }} onClick={() => onNotice('Audit trail screen is coming in a later phase.')}>Audit trail</button>}
       </div>
 
       {message && <div className="alert alert-success" role="status">{message}</div>}

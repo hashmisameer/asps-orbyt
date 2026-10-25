@@ -82,3 +82,23 @@ An account locks for 15 minutes after 5 wrong passwords.
 
 Add a new numbered file in `backend/src/db/migrations/` (for example `002_masters.sql`)
 and run `npm run db:migrate`. Never edit a migration that has already run.
+
+## Rule: every new screen, button and report goes into the catalogue
+
+The owner switches things on or off per client (Owner console › client › Access & add-ons), so anything
+the owner may want to sell or hide must be registered in the `features` table in a migration:
+
+| What | `kind` | `parent_code` | In the menu? |
+|---|---|---|---|
+| Screen | `screen` | – | yes |
+| Report in the menu | `report` | – | yes |
+| Button / tab inside a screen | `function` | the screen's code | no |
+| Report opened from a screen | `report` | the screen's code | no |
+| Top bar icon | `tool` | – | no |
+
+In the same migration, give the new item to clients and roles that already have its parent screen
+(see `010_screen_functions.sql`), so nothing disappears for them.
+
+Then use it in two places:
+- **Screen:** `const has = (code) => Boolean(session?.permissions?.[code]);` and render the button only when `has('...')`.
+- **Server:** add `can('<code>', 'view')` to the route the button calls.

@@ -30,6 +30,8 @@ const toLine = (l) => ({
 
 export default function Bom({ active, session }) {
   const allowed = session?.permissions?.['order.bom'] || [];
+  // Functions and reports the owner gave this client (hidden when switched off)
+  const has = (code) => Boolean(session?.permissions?.[code]);
   const [processes, setProcesses] = useState([]);
   const [data, setData] = useState(null);           // { order, finalCosting, bom }
   const [lines, setLines] = useState([]);
@@ -155,12 +157,14 @@ export default function Bom({ active, session }) {
       <div className="toolbar">
         <button type="button" className="tb" onClick={() => setFindOpen(true)}>Pick order (F3)</button>
         <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : 'Save (Ctrl+S)'}</button>
-        <button type="button" className="tb" disabled={readOnly || !data.finalCosting} onClick={pullFromCosting}
-          title={data && !data.finalCosting ? 'This order has no Final costing yet' : 'Add the fabric, trims and packing items of the Final costing'}>Pull from costing</button>
-        {data?.bom && allowed.includes('approve') && (approved
+        {has('order.bom.from_costing') && (
+          <button type="button" className="tb" disabled={readOnly || !data.finalCosting} onClick={pullFromCosting}
+            title={data && !data.finalCosting ? 'This order has no Final costing yet' : 'Add the fabric, trims and packing items of the Final costing'}>Pull from costing</button>
+        )}
+        {data?.bom && allowed.includes('approve') && has('order.bom.approve') && (approved
           ? <button type="button" className="tb" onClick={() => changeStatus('reopen')}>Reopen</button>
           : <button type="button" className="tb" onClick={() => changeStatus('approve')}>Approve</button>)}
-        <button type="button" className="tb tb-soon" style={{ marginLeft: 'auto' }} title="Coming in a later phase">Print</button>
+        {has('order.bom.print') && <button type="button" className="tb tb-soon" style={{ marginLeft: 'auto' }} title="Coming in a later phase">Print</button>}
       </div>
 
       {error && <div className="alert alert-error" role="alert">{error}</div>}
@@ -214,7 +218,7 @@ export default function Bom({ active, session }) {
             </div>
             <div className="grid-scroll">
               {tabLines.length === 0 ? (
-                <p className="empty-row">No {current?.name.toLowerCase()} items yet.{data.finalCosting ? ' Use "Pull from costing" or "+ Add items".' : ' Use "+ Add items".'}</p>
+                <p className="empty-row">No {current?.name.toLowerCase()} items yet.{data.finalCosting && has('order.bom.from_costing') ? ' Use "Pull from costing" or "+ Add items".' : ' Use "+ Add items".'}</p>
               ) : (
                 <table className="og bom-grid">
                   <thead>

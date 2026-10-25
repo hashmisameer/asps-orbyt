@@ -32,7 +32,7 @@ costingRouter.get('/', can(FEATURE, 'view'), asyncHandler(async (req, res) => {
 costingRouter.get('/:id', can(FEATURE, 'view'), asyncHandler(async (req, res) => {
   res.json(await costing.getCosting(req.user.companyId, idParam(req.params.id)));
 }));
-costingRouter.get('/:id/revisions/:rev', can(FEATURE, 'view'), asyncHandler(async (req, res) => {
+costingRouter.get('/:id/revisions/:rev', can(FEATURE, 'view'), can('order.costing.revisions', 'view'), asyncHandler(async (req, res) => {
   res.json(await costing.getRevision(req.user.companyId, idParam(req.params.id), idParam(req.params.rev)));
 }));
 costingRouter.post('/', can(FEATURE, 'create'), asyncHandler(async (req, res) => {
@@ -41,6 +41,6 @@ costingRouter.post('/', can(FEATURE, 'create'), asyncHandler(async (req, res) =>
 costingRouter.put('/:id', can(FEATURE, 'edit'), asyncHandler(async (req, res) => {
   res.json(await costing.updateCosting(req.user, idParam(req.params.id), req.body || {}, { canApprove: await canApprove(req) }));
 }));
-costingRouter.delete('/:id', can(FEATURE, 'edit'), asyncHandler(async (req, res) => {
+costingRouter.delete('/:id', can(FEATURE, 'edit'), can('order.costing.delete', 'view'), asyncHandler(async (req, res) => {
   res.json(await costing.deleteCosting(req.user, idParam(req.params.id)));
 }));

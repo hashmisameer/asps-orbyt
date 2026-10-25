@@ -115,8 +115,11 @@ export function can(featureCode, action) {
       const { permissions } = await getUserAccess(req.user.id, req.user.companyId);
       const allowed = permissions[featureCode] || [];
       if (!allowed.includes(action)) {
-        throw new AppError(403, allowed.length
-          ? `You don't have permission to ${action} here. Ask your administrator.`
+        if (allowed.length) throw new AppError(403, `You don't have permission to ${action} here. Ask your administrator.`);
+        // A function or report inside a screen: say so plainly instead of talking about the screen
+        const kind = (await query('SELECT kind FROM features WHERE code = $1', [featureCode]))[0]?.kind;
+        throw new AppError(403, kind === 'function' || kind === 'report'
+          ? "This option isn't switched on for you. Ask your administrator or ORBYT support."
           : "You don't have access to this screen. Ask your administrator.");
       }
       if (state.licence.expired && !['view', 'export'].includes(action)) {

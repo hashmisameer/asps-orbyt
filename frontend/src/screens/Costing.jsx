@@ -52,6 +52,8 @@ const blankLine = (section, inr, from = {}) => ({
 export default function Costing({ active, session }) {
   const allowed = session?.permissions?.['order.costing'] || [];
   const canApprove = allowed.includes('approve');
+  // Functions and reports the owner gave this client (hidden when switched off)
+  const has = (code) => Boolean(session?.permissions?.[code]);
   const canCreateItem = (session?.permissions?.['masters.item'] || []).includes('create');
   const [lookups, setLookups] = useState(null);
   const [loadError, setLoadError] = useState('');
@@ -231,9 +233,11 @@ export default function Costing({ active, session }) {
         <button type="button" className="tb" onClick={startNew}>+ New (F2)</button>
         <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search (F3)</button>
         <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : 'Save (Ctrl+S)'}</button>
-        <button type="button" className="tb" onClick={remove} disabled={!saved || viewing || saved.type === 'final' || !allowed.includes('edit')}
-          title={saved?.type === 'final' ? 'A Final costing can\'t be deleted. Save it as Actual first.' : 'Delete this costing'}>Delete</button>
-        {saved && (
+        {has('order.costing.delete') && (
+          <button type="button" className="tb" onClick={remove} disabled={!saved || viewing || saved.type === 'final' || !allowed.includes('edit')}
+            title={saved?.type === 'final' ? 'A Final costing can\'t be deleted. Save it as Actual first.' : 'Delete this costing'}>Delete</button>
+        )}
+        {saved && has('order.costing.revisions') && (
           <select className="tb tb-select" aria-label="Revisions" value={viewing || saved.revision} onChange={e => viewRevision(Number(e.target.value))}>
             {saved.revisions.map(r => (
               <option key={r.revision} value={r.revision}>
@@ -242,7 +246,7 @@ export default function Costing({ active, session }) {
             ))}
           </select>
         )}
-        <button type="button" className="tb tb-soon" style={{ marginLeft: 'auto' }} title="Coming in a later phase">Print</button>
+        {has('order.costing.print') && <button type="button" className="tb tb-soon" style={{ marginLeft: 'auto' }} title="Coming in a later phase">Print</button>}
       </div>
 
       {viewing && (

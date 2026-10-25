@@ -25,7 +25,7 @@ bomRouter.get('/order/:id', can(FEATURE, 'view'), asyncHandler(async (req, res) 
   res.json(await bom.getBom(req.user.companyId, idParam(req.params.id)));
 }));
 // Items of the order's Final costing, to add to the screen (nothing is saved)
-bomRouter.get('/order/:id/from-costing', can(FEATURE, 'view'), asyncHandler(async (req, res) => {
+bomRouter.get('/order/:id/from-costing', can(FEATURE, 'view'), can('order.bom.from_costing', 'view'), asyncHandler(async (req, res) => {
   res.json(await bom.fromCosting(req.user.companyId, idParam(req.params.id)));
 }));
 // Saving needs Create permission the first time and Edit after that
@@ -35,9 +35,9 @@ bomRouter.put('/order/:id', asyncHandler(async (req, res, next) => {
 }), asyncHandler(async (req, res) => {
   res.json(await bom.saveBom(req.user, idParam(req.params.id), req.body || {}));
 }));
-bomRouter.post('/order/:id/approve', can(FEATURE, 'approve'), asyncHandler(async (req, res) => {
+bomRouter.post('/order/:id/approve', can(FEATURE, 'approve'), can('order.bom.approve', 'view'), asyncHandler(async (req, res) => {
   res.json(await bom.setStatus(req.user, idParam(req.params.id), 'approved'));
 }));
-bomRouter.post('/order/:id/reopen', can(FEATURE, 'approve'), asyncHandler(async (req, res) => {
+bomRouter.post('/order/:id/reopen', can(FEATURE, 'approve'), can('order.bom.approve', 'view'), asyncHandler(async (req, res) => {
   res.json(await bom.setStatus(req.user, idParam(req.params.id), 'draft'));
 }));

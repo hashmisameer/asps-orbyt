@@ -11,6 +11,7 @@ import { mastersRouter } from './modules/masters/masters.routes.js';
 import { costingRouter } from './modules/costing/costing.routes.js';
 import { bomRouter } from './modules/bom/bom.routes.js';
 import { partiesRouter } from './modules/parties/parties.routes.js';
+import { brandsRouter } from './modules/brands/brands.routes.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -35,6 +36,7 @@ app.use('/api/masters', mastersRouter);
 app.use('/api/costing', costingRouter);
 app.use('/api/bom', bomRouter);
 app.use('/api/parties', partiesRouter);
+app.use('/api/brands', brandsRouter);
 
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found.' }));
 app.use(errorHandler);

@@ -7,6 +7,7 @@ export const READY_SCREENS = {
   'order.costing': 'costing',
   'order.bom': 'bom',
   'masters.party': 'party',
+  'masters.brand': 'brand',
   'masters.season': 'season',
   'masters.currency': 'currency',
   'masters.item_group': 'itemGroup',

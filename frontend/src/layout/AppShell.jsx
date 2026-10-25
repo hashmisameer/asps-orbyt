@@ -7,6 +7,7 @@ import Costing from '../screens/Costing.jsx';
 import Bom from '../screens/Bom.jsx';
 import SimpleMaster from '../screens/SimpleMaster.jsx';
 import PartyMaster from '../screens/PartyMaster.jsx';
+import BrandMaster from '../screens/BrandMaster.jsx';
 
 // Built screens: id -> component, tab title and breadcrumb
 const SCREENS = {
@@ -14,6 +15,7 @@ const SCREENS = {
   costing: { component: Costing, title: 'Costing', crumb: 'Order › Costing' },
   bom: { component: Bom, title: 'BOM', crumb: 'Order › BOM' },
   party: { component: PartyMaster, title: 'Party master', crumb: 'Masters › Party master' },
+  brand: { component: BrandMaster, title: 'Brand master', crumb: 'Masters › Brand master' },
   season: { component: SimpleMaster, props: { kind: 'season' }, title: 'Season', crumb: 'Masters › Season' },
   currency: { component: SimpleMaster, props: { kind: 'currency' }, title: 'Currency', crumb: 'Masters › Currency' },
   itemGroup: { component: SimpleMaster, props: { kind: 'item_group' }, title: 'Summary items', crumb: 'Masters › Item group' },

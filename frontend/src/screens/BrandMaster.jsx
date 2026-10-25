@@ -94,7 +94,7 @@ export default function BrandMaster({ active, session }) {
     try {
       const b = saved ? await api(`/brands/${saved.id}`, { method: 'PUT', body: form }) : await api('/brands', { method: 'POST', body: form });
       load(b);
-      setMessage(saved ? `${b.code} saved.` : `Brand ${b.code} created. New orders of this brand will be numbered ORD/…/${b.code}/0001.`);
+      setMessage(saved ? `${b.code} saved.` : `Brand ${b.code} created.`);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -145,11 +145,11 @@ export default function BrandMaster({ active, session }) {
       <section className="panel">
         <div className="panel-head">BRAND DETAILS</div>
         <div className="form-grid party-head">
-          <label className="f" title={codeLocked ? 'This code is already in order numbers, so it can\'t be changed' : '2 to 5 letters or numbers; goes into the order number'}>
+          <label className="f" title={codeLocked ? 'This code is already in order numbers, so it can\'t be changed' : '2 to 5 letters or numbers'}>
             <span>Brand code <span className="req">*</span></span>
             <input className="inp" value={form.code} maxLength={5} placeholder="e.g. NWA" disabled={codeLocked}
               onChange={e => set({ code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} />
-            <span className="field-hint">{codeLocked ? `Locked – used in ${saved.orders} order${saved.orders === 1 ? '' : 's'}` : `Order no.: ORD/…/${form.code || 'CODE'}/0001`}</span>
+            {codeLocked && <span className="field-hint">Locked – used in {saved.orders} order{saved.orders === 1 ? '' : 's'}</span>}
           </label>
           <label className="f"><span>Brand name <span className="req">*</span></span>
             <input className="inp" value={form.name} maxLength={120} onChange={e => set({ name: e.target.value })} />

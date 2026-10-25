@@ -51,7 +51,7 @@ export function calcTotals(lines, orderQty) {
 export async function getLookups(companyId) {
   const [buyers, styles, seasons, currencies, colours, ranges, lines] = await Promise.all([
     // Buyers come from Party master (type Buyer or Both)
-    query(`SELECT id, short_code AS code, name, currency_id FROM parties WHERE company_id = $1 AND is_active AND party_type IN ('buyer', 'both') ORDER BY name`, [companyId]),
+    query(`SELECT id, code, name, currency_id FROM parties WHERE company_id = $1 AND is_active AND party_type IN ('buyer', 'both') ORDER BY name`, [companyId]),
     query('SELECT id, code, name FROM styles WHERE company_id = $1 AND is_active ORDER BY code', [companyId]),
     query('SELECT id, name FROM seasons WHERE company_id = $1 AND is_active ORDER BY name', [companyId]),
     query('SELECT id, code, name, rate_to_inr FROM currencies WHERE company_id = $1 AND is_active ORDER BY code', [companyId]),

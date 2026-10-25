@@ -10,7 +10,7 @@ const GST_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const NEW = '__new';
 
 const blankHeader = (inrId = '') => ({
-  name: '', shortCode: '', type: '', gstCode: '', currencyId: inrId, isExport: false, generalTypeMapping: false, isActive: true
+  code: '', name: '', type: '', gstCode: '', currencyId: inrId, isExport: false, generalTypeMapping: false, isActive: true
 });
 const blankAddress = (prev, partyName, indiaId) => ({
   key: nextKey++, type: prev ? 'shipping' : 'billing', name: prev?.name || partyName || '', address1: '', address2: '', address3: '',
@@ -51,7 +51,7 @@ export default function PartyMaster({ active, session, onNotice }) {
   }
   function load(p) {
     setSaved(p);
-    setHeader({ name: p.name, shortCode: p.shortCode, type: p.type, gstCode: p.gstCode, currencyId: p.currencyId,
+    setHeader({ code: p.code, name: p.name, type: p.type, gstCode: p.gstCode, currencyId: p.currencyId,
       isExport: p.isExport, generalTypeMapping: p.generalTypeMapping, isActive: p.isActive });
     setAddresses(p.addresses.map(a => ({ ...a, key: nextKey++ })));
     setDirty(false);
@@ -197,7 +197,10 @@ export default function PartyMaster({ active, session, onNotice }) {
       <section className="panel">
         <div className="panel-head">PARTY DETAILS</div>
         <div className="form-grid party-head">
-          <label className="f span2"><span>Party name <span className="req">*</span></span>
+          <label className="f"><span>Party code <span className="req">*</span></span>
+            <input className="inp" value={header.code} maxLength={20} placeholder="e.g. HM" onChange={e => setH({ code: e.target.value.toUpperCase().replace(/\s/g, '') })} />
+          </label>
+          <label className="f"><span>Party name <span className="req">*</span></span>
             <input className="inp" value={header.name} maxLength={150} onChange={e => setH({ name: e.target.value })} />
           </label>
           <label className="f"><span>Party type <span className="req">*</span></span>
@@ -206,22 +209,18 @@ export default function PartyMaster({ active, session, onNotice }) {
               {Object.entries(TYPE_NAMES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </label>
-          <label className="f"><span>Party code</span><span className="ro">{saved ? saved.code : 'Given on save'}</span></label>
-          <label className="f"><span>GST code</span>
-            <input className={`inp ${headerGstBad ? 'inp-bad' : ''}`} value={header.gstCode} maxLength={15} placeholder="15 characters, e.g. 09AAACA1234F1Z5"
-              onChange={e => setH({ gstCode: e.target.value.toUpperCase().replace(/\s/g, '') })} />
-            <span className={headerGstBad ? 'field-bad' : 'field-hint'}>{headerGstBad ? 'GST code has 15 characters, e.g. 09AAACA1234F1Z5' : header.isExport ? 'Not needed for an export party' : ' '}</span>
-          </label>
           <label className="f"><span>Currency <span className="req">*</span></span>
             <select className="inp" value={header.currencyId} onChange={e => setH({ currencyId: e.target.value })}>
               <option value="">Select currency</option>
               {lookups.currencies.map(c => <option key={c.id} value={c.id}>{c.code} – {c.name}</option>)}
             </select>
           </label>
-          <label className="f"><span>Short code</span>
-            <input className="inp" value={header.shortCode} maxLength={10} placeholder="e.g. HM" onChange={e => setH({ shortCode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} />
+          <label className="f"><span>GST code</span>
+            <input className={`inp ${headerGstBad ? 'inp-bad' : ''}`} value={header.gstCode} maxLength={15} placeholder="15 characters, e.g. 09AAACA1234F1Z5"
+              onChange={e => setH({ gstCode: e.target.value.toUpperCase().replace(/\s/g, '') })} />
+            <span className={headerGstBad ? 'field-bad' : 'field-hint'}>{headerGstBad ? 'GST code has 15 characters, e.g. 09AAACA1234F1Z5' : header.isExport ? 'Not needed for an export party' : ' '}</span>
           </label>
-          <div className="f"><span>&nbsp;</span>
+          <div className="f party-checks-wrap"><span>&nbsp;</span>
             <div className="party-checks">
               <label><input type="checkbox" checked={header.isExport} onChange={e => toggleExport(e.target.checked)} /> Is export party</label>
               <label><input type="checkbox" checked={header.generalTypeMapping} onChange={e => setH({ generalTypeMapping: e.target.checked })} /> General type mapping</label>
@@ -236,28 +235,35 @@ export default function PartyMaster({ active, session, onNotice }) {
           <span>ADDRESS DETAILS · {addresses.length}{addresses.length > 0 && ` (${typeCount('billing')} billing, ${typeCount('shipping')} shipping)`}</span>
           <span className="hint">Tick "Default" for the billing and the shipping address other screens should pick first</span>
         </div>
-        {addresses.length === 0 ? (
-          <p className="empty-row" style={{ margin: '4px 18px 12px' }}>No address yet. Click "+ Add address".</p>
-        ) : (
-          <div className="grid-scroll party-grid">
+        <div className="grid-scroll party-grid">
             <table className="og">
               <thead>
                 <tr>
-                  <th className="stick">#</th><th>Address type <span className="req">*</span></th><th>Party name <span className="req">*</span></th>
+                  <th className="stick"><button type="button" className="add-btn" onClick={addAddress} aria-label="Add address" title="Add address">+</button></th><th>Address type <span className="req">*</span></th><th>Party name</th>
                   <th>Address 1 <span className="req">*</span></th><th>Address 2</th><th>Address 3</th>
                   <th>Country <span className="req">*</span></th><th>State</th><th>City</th><th>Pincode</th><th>Phone</th><th>Email</th>
-                  <th>Contact person</th><th>GST code</th><th>Default</th><th className="c-act" aria-label="Delete" />
+                  <th>Contact person</th><th>GST code</th><th>Default</th>
                 </tr>
               </thead>
               <tbody>
+                {addresses.length === 0 && (
+                  <tr><td className="stick" /><td colSpan={14} className="empty-row party-empty">No address yet. Click + to add one.</td></tr>
+                )}
                 {addresses.map((a, i) => {
                   const gstBad = a.gstCode && !GST_RE.test(a.gstCode);
                   return (
                     <tr key={a.key}>
-                      <td className="stick">{i + 1}</td>
+                      <td className="stick">
+                        <span className="party-no">
+                          <button type="button" className="row-del" aria-label={`Delete address ${i + 1}`} title="Delete address"
+                            onClick={() => { setDirty(true); setAddresses(as => as.filter(x => x.key !== a.key)); }}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+                          </button>{i + 1}
+                        </span>
+                      </td>
                       <td><select className="ci" aria-label="Address type" value={a.type} onChange={e => setA(a.key, { type: e.target.value, isDefault: false })}>
                         <option value="billing">Billing</option><option value="shipping">Shipping</option></select></td>
-                      <td><input className="ci w-name" aria-label="Party name on address" value={a.name} onChange={e => setA(a.key, { name: e.target.value })} /></td>
+                      <td><input className="ci w-name" aria-label="Party name on address" value={a.name} placeholder={header.name || 'Same as party name'} onChange={e => setA(a.key, { name: e.target.value })} /></td>
                       <td><input className="ci w-adr" aria-label="Address 1" value={a.address1} onChange={e => setA(a.key, { address1: e.target.value })} /></td>
                       <td><input className="ci w-adr" aria-label="Address 2" value={a.address2} onChange={e => setA(a.key, { address2: e.target.value })} /></td>
                       <td><input className="ci w-adr" aria-label="Address 3" value={a.address3} onChange={e => setA(a.key, { address3: e.target.value })} /></td>
@@ -275,19 +281,13 @@ export default function PartyMaster({ active, session, onNotice }) {
                         <label><input type="checkbox" checked={a.isDefault} aria-label={`Default ${a.type} address`} onChange={e => setDefault(a, e.target.checked)} />
                           {a.isDefault && <span className="chip chip-teal">{a.type === 'billing' ? 'Billing' : 'Shipping'}</span>}</label>
                       </td>
-                      <td className="c-act"><button type="button" className="del-btn" aria-label={`Delete address ${i + 1}`} title="Delete address"
-                        onClick={() => { setDirty(true); setAddresses(as => as.filter(x => x.key !== a.key)); }}>×</button></td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-        )}
-        <div className="party-foot">
-          <button type="button" className="add-line" onClick={addAddress}>+ Add address</button>
-          <span className="hint">If no address of a type is ticked as default, the first one becomes the default on save.</span>
-        </div>
+        <p className="hint party-foot">If no address of a type is ticked as default, the first one becomes the default on save.</p>
       </section>
     </div>
   );

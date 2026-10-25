@@ -54,13 +54,9 @@ async function seed() {
       if (!usd) break;
       const exists = (await db.query('SELECT 1 FROM parties WHERE company_id = $1 AND lower(name) = lower($2)', [cid, name])).rows.length;
       if (exists) continue;
-      const n = (await db.query(
-        `INSERT INTO document_series (company_id, doc_type, fy_short, prefix_key, last_number) VALUES ($1, 'PTY', '-', '', 1)
-         ON CONFLICT (company_id, doc_type, fy_short, prefix_key) DO UPDATE SET last_number = document_series.last_number + 1
-         RETURNING last_number`, [cid])).rows[0].last_number;
       await db.query(
-        `INSERT INTO parties (company_id, code, name, short_code, party_type, currency_id, is_export) VALUES ($1, $2, $3, $4, 'buyer', $5, TRUE)`,
-        [cid, `PTY-${String(n).padStart(4, '0')}`, name, code, usd]);
+        `INSERT INTO parties (company_id, code, name, party_type, currency_id, is_export) VALUES ($1, $2, $3, 'buyer', $4, TRUE) ON CONFLICT DO NOTHING`,
+        [cid, code, name, usd]);
     }
     for (const name of ['Spring Summer', 'Autumn Winter', 'Holiday']) {
       await db.query('INSERT INTO seasons (company_id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING', [cid, name]);

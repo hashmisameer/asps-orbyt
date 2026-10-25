@@ -1,4 +1,4 @@
-// Search panel for parties: by name, party code, short code or GST code, and by party type.
+// Search panel for parties: by name, party code or GST code, and by party type.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 
@@ -26,7 +26,7 @@ export default function PartySearch({ onOpen, onClose }) {
       <section className="find-panel" role="dialog" aria-label="Search parties" onKeyDown={e => { if (e.key === 'Escape') onClose(); }}>
         <div className="find-head"><h2>Search parties</h2><button type="button" className="tab-x" aria-label="Close" onClick={onClose}>×</button></div>
         <div className="find-filters" style={{ gridTemplateColumns: '3fr 1fr auto' }}>
-          <label className="f"><span>Party name, party code, short code or GST code</span>
+          <label className="f"><span>Party name, party code or GST code</span>
             <input ref={box} className="inp" placeholder="Type to search" value={search} onChange={e => setSearch(e.target.value)} />
           </label>
           <label className="f"><span>Party type</span>
@@ -42,15 +42,14 @@ export default function PartySearch({ onOpen, onClose }) {
         {error && <div className="alert alert-error" role="alert">{error}</div>}
         <div className="find-list">
           <table className="og find-table">
-            <thead><tr><th>Party code</th><th>Party name</th><th>Short code</th><th>Type</th><th>GST code</th><th>Currency</th><th>Billing city</th><th className="num">Addresses</th><th>Status</th></tr></thead>
+            <thead><tr><th>Party code</th><th>Party name</th><th>Type</th><th>GST code</th><th>Currency</th><th>Billing city</th><th className="num">Addresses</th><th>Status</th></tr></thead>
             <tbody>
-              {rows === null && <tr><td colSpan={9} className="empty-row">Loading…</td></tr>}
-              {rows && rows.length === 0 && <tr><td colSpan={9} className="empty-row">{search || type ? 'No party matches.' : 'No parties saved yet.'}</td></tr>}
+              {rows === null && <tr><td colSpan={8} className="empty-row">Loading…</td></tr>}
+              {rows && rows.length === 0 && <tr><td colSpan={8} className="empty-row">{search || type ? 'No party matches.' : 'No parties saved yet.'}</td></tr>}
               {rows && rows.map(r => (
                 <tr key={r.id} className="find-row" tabIndex={0} onClick={() => onOpen(r.id)} onKeyDown={e => { if (e.key === 'Enter') onOpen(r.id); }}>
                   <td className="order-no">{r.code}</td>
                   <td>{r.name}{r.isExport && <span className="chip chip-grey" style={{ marginLeft: 6 }}>Export</span>}</td>
-                  <td>{r.shortCode || '—'}</td>
                   <td>{TYPE_NAMES[r.type]}</td>
                   <td>{r.gstCode || '—'}</td>
                   <td>{r.currency}</td>

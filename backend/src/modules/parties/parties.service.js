@@ -72,7 +72,7 @@ export async function listParties(companyId, { search = '', type = '' } = {}) {
   const q = String(search).trim();
   const t = PARTY_TYPES.includes(type) ? type : null;
   const rows = await query(
-    `SELECT p.id, p.code, p.name, p.short_code, p.party_type, p.gst_code, p.is_export, p.is_active, cur.code AS currency,
+    `SELECT p.id, p.code, p.name, p.party_type, p.gst_code, p.is_export, p.is_active, cur.code AS currency,
             ci.name AS city, co.name AS country,
             (SELECT COUNT(*) FROM party_addresses a WHERE a.party_id = p.id)::int AS addresses
        FROM parties p
@@ -81,12 +81,11 @@ export async function listParties(companyId, { search = '', type = '' } = {}) {
        LEFT JOIN cities ci ON ci.id = a.city_id
        LEFT JOIN countries co ON co.id = a.country_id
       WHERE p.company_id = $1
-        AND ($2 = '' OR p.name ILIKE '%' || $2 || '%' OR p.code ILIKE '%' || $2 || '%' OR p.short_code ILIKE '%' || $2 || '%'
-             OR p.gst_code ILIKE '%' || $2 || '%')
+        AND ($2 = '' OR p.name ILIKE '%' || $2 || '%' OR p.code ILIKE '%' || $2 || '%' OR p.gst_code ILIKE '%' || $2 || '%')
         AND ($3::text IS NULL OR p.party_type = $3 OR ($3 <> 'both' AND p.party_type = 'both'))
       ORDER BY p.is_active DESC, p.name LIMIT 300`, [companyId, q, t]);
   return rows.map(r => ({
-    id: r.id, code: r.code, name: r.name, shortCode: r.short_code || '', type: r.party_type, gstCode: r.gst_code || '',
+    id: r.id, code: r.code, name: r.name, type: r.party_type, gstCode: r.gst_code || '',
     isExport: r.is_export, isActive: r.is_active, currency: r.currency, city: r.city || '', country: r.country || '', addresses: r.addresses
   }));
 }
@@ -100,7 +99,7 @@ export async function getParty(companyId, partyId) {
   if (!p) throw new AppError(404, 'Party not found.');
   const addresses = await query('SELECT * FROM party_addresses WHERE party_id = $1 ORDER BY sort_order', [partyId]);
   return {
-    id: p.id, code: p.code, name: p.name, shortCode: p.short_code || '', type: p.party_type, gstCode: p.gst_code || '',
+    id: p.id, code: p.code, name: p.name, type: p.party_type, gstCode: p.gst_code || '',
     currencyId: str(p.currency_id), isExport: p.is_export, generalTypeMapping: p.general_type_mapping, isActive: p.is_active,
     updatedBy: p.updated_name || p.created_name || '', updatedAt: p.updated_at,
     addresses: addresses.map(a => ({
@@ -116,8 +115,8 @@ async function read(companyId, body, partyId = null) {
   const problems = [];   // things to fill in
   const wrong = [];      // things that don't fit together
   const h = {
+    code: text(body.code, 20)?.toUpperCase().replace(/\s/g, '') || null,
     name: text(body.name, 150),
-    shortCode: text(body.shortCode, 10)?.toUpperCase() || null,
     type: String(body.type || ''),
     gstCode: text(body.gstCode, 15)?.toUpperCase().replace(/\s/g, '') || null,
     currencyId: id(body.currencyId),
@@ -125,10 +124,11 @@ async function read(companyId, body, partyId = null) {
     generalTypeMapping: body.generalTypeMapping === true,
     isActive: body.isActive !== false
   };
+  if (!h.code) problems.push('party code');
+  else if (!/^[A-Z0-9/_-]{1,20}$/.test(h.code)) problems.push('party code (letters, numbers, - / _ only)');
   if (!h.name) problems.push('party name');
   if (!PARTY_TYPES.includes(h.type)) problems.push('party type');
   if (!h.currencyId || !(await query('SELECT 1 FROM currencies WHERE id = $1 AND company_id = $2', [h.currencyId, companyId])).length) problems.push('currency');
-  if (h.shortCode && !/^[A-Z0-9]{1,10}$/.test(h.shortCode)) problems.push('short code (letters and numbers only)');
   if (h.gstCode && !GSTIN.test(h.gstCode)) problems.push('a valid GST code (15 characters, e.g. 09AAACA1234F1Z5)');
 
   const [countries, states, cities] = await Promise.all([
@@ -147,7 +147,8 @@ async function read(companyId, body, partyId = null) {
   list.forEach((a, i) => {
     const row = `address ${i + 1}`;
     const r = {
-      type: String(a.type || ''), name: text(a.name, 150), address1: text(a.address1), address2: text(a.address2), address3: text(a.address3),
+      // Party name on the address: the party's own name unless something else is typed
+      type: String(a.type || ''), name: text(a.name, 150) || h.name, address1: text(a.address1), address2: text(a.address2), address3: text(a.address3),
       countryId: id(a.countryId), stateId: id(a.stateId), cityId: id(a.cityId), pincode: text(a.pincode, 12),
       phone: text(a.phone, 30), email: text(a.email, 120), contactPerson: text(a.contactPerson, 80),
       gstCode: text(a.gstCode, 15)?.toUpperCase().replace(/\s/g, '') || null, isDefault: a.isDefault === true
@@ -190,24 +191,14 @@ async function read(companyId, body, partyId = null) {
     if (ofType.length && !defaults.length) ofType[0].isDefault = true;
   }
 
-  // No two parties with the same name or short code
+  // No two parties with the same code or name
+  const dupCodeRow = await query('SELECT name FROM parties WHERE company_id = $1 AND lower(code) = lower($2) AND ($3::bigint IS NULL OR id <> $3)',
+    [companyId, h.code, partyId]);
+  if (dupCodeRow.length) throw new AppError(400, `Party code ${h.code} is already used by ${dupCodeRow[0].name}.`);
   const dupName = await query('SELECT code FROM parties WHERE company_id = $1 AND lower(name) = lower($2) AND ($3::bigint IS NULL OR id <> $3)',
     [companyId, h.name, partyId]);
   if (dupName.length) throw new AppError(400, `A party named "${h.name}" already exists (${dupName[0].code}).`);
-  if (h.shortCode) {
-    const dupCode = await query('SELECT name FROM parties WHERE company_id = $1 AND lower(short_code) = lower($2) AND ($3::bigint IS NULL OR id <> $3)',
-      [companyId, h.shortCode, partyId]);
-    if (dupCode.length) throw new AppError(400, `Short code ${h.shortCode} is already used by ${dupCode[0].name}.`);
-  }
   return { h, addresses };
-}
-
-async function nextCode(db, companyId) {
-  const r = (await db.query(
-    `INSERT INTO document_series (company_id, doc_type, fy_short, prefix_key, last_number) VALUES ($1, 'PTY', '-', '', 1)
-     ON CONFLICT (company_id, doc_type, fy_short, prefix_key) DO UPDATE SET last_number = document_series.last_number + 1
-     RETURNING last_number`, [companyId])).rows[0];
-  return `PTY-${String(r.last_number).padStart(4, '0')}`;
 }
 
 async function saveAddresses(db, partyId, addresses) {
@@ -232,11 +223,11 @@ async function audit(db, user, action, partyId, details) {
 export async function createParty(user, body) {
   const { h, addresses } = await read(user.companyId, body);
   const partyId = await withTransaction(async (db) => {
-    const code = await nextCode(db, user.companyId);
+    const code = h.code;
     const pid = (await db.query(
-      `INSERT INTO parties (company_id, code, name, short_code, party_type, gst_code, currency_id, is_export, general_type_mapping, is_active, created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11) RETURNING id`,
-      [user.companyId, code, h.name, h.shortCode, h.type, h.gstCode, h.currencyId, h.isExport, h.generalTypeMapping, h.isActive, user.id])).rows[0].id;
+      `INSERT INTO parties (company_id, code, name, party_type, gst_code, currency_id, is_export, general_type_mapping, is_active, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10) RETURNING id`,
+      [user.companyId, code, h.name, h.type, h.gstCode, h.currencyId, h.isExport, h.generalTypeMapping, h.isActive, user.id])).rows[0].id;
     await saveAddresses(db, pid, addresses);
     await audit(db, user, 'CREATE', pid, { code, name: h.name, type: h.type, addresses: addresses.length });
     return pid;
@@ -248,10 +239,10 @@ export async function updateParty(user, partyId, body) {
   const { h, addresses } = await read(user.companyId, body, partyId);
   await withTransaction(async (db) => {
     const r = await db.query(
-      `UPDATE parties SET name = $3, short_code = $4, party_type = $5, gst_code = $6, currency_id = $7, is_export = $8,
+      `UPDATE parties SET code = $3, name = $4, party_type = $5, gst_code = $6, currency_id = $7, is_export = $8,
               general_type_mapping = $9, is_active = $10, updated_by = $11, updated_at = now()
         WHERE id = $1 AND company_id = $2`,
-      [partyId, user.companyId, h.name, h.shortCode, h.type, h.gstCode, h.currencyId, h.isExport, h.generalTypeMapping, h.isActive, user.id]);
+      [partyId, user.companyId, h.code, h.name, h.type, h.gstCode, h.currencyId, h.isExport, h.generalTypeMapping, h.isActive, user.id]);
     if (!r.rowCount) throw new AppError(404, 'Party not found.');
     // A party used as buyer in a costing must stay a buyer
     if (h.type === 'supplier') {

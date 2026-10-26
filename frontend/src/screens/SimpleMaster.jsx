@@ -1,7 +1,9 @@
-// One screen for the small masters (Buyer, Season, Currency, Item group, Item): a form on top, the list below.
-// Click a row to change it; untick "Active" to hide it from dropdowns (rows are never deleted).
+// One screen for the small masters (Season, Currency, Item group, Item): opens on the list of all records,
+// click one for its form. Untick "Active" to hide it from dropdowns (rows are never deleted).
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import RecordList from '../components/RecordList.jsx';
+import { ControlPanel, StatusBar, Field, AllButton } from '../components/RecordBar.jsx';
 
 export const MASTER_SCREENS = {
   buyer: {
@@ -51,19 +53,22 @@ export const MASTER_SCREENS = {
 };
 
 const emptyFor = (cfg) => ({ id: null, isActive: true, ...Object.fromEntries(cfg.fields.map(f => [f.key, ''])) });
+const plural = (cfg) => cfg.plural[0].toUpperCase() + cfg.plural.slice(1);
 
 export default function SimpleMaster({ kind, active, session }) {
   const cfg = MASTER_SCREENS[kind];
   const allowed = session?.permissions?.[cfg.feature || `masters.${kind}`] || [];
-  const [rows, setRows] = useState(null);
   const [refs, setRefs] = useState({});
   const [form, setForm] = useState(emptyFor(cfg));
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const [filter, setFilter] = useState('');
+  const [mode, setMode] = useState('list');          // 'list' = all records, 'form' = one record
+  const [listState, setListState] = useState({ search: '', filter: '' });
+  const [listRows, setListRows] = useState([]);      // rows of the list, for ‹ › on the form
+  const [lastOpened, setLastOpened] = useState(null);
+  const [dirty, setDirty] = useState(false);
 
-  const load = () => api(`/masters/${kind}`).then(r => { setRows(r.rows); setRefs(r.refs || {}); }).catch(e => setError(e.message));
   // What a value looks like in the list: option names and dropdown labels instead of codes and ids
   const show = (f, v) => {
     if (v === '' || v === null || v === undefined) return f.empty ? 'Same as summary' : '—';
@@ -71,21 +76,47 @@ export default function SimpleMaster({ kind, active, session }) {
     if (f.ref) return (refs[f.key] || []).find(o => o.id === String(v))?.label || v;
     return String(v);
   };
-  useEffect(() => { load(); }, [kind]);
+  // Dropdown lists need refs on the form too (e.g. New straight from the menu)
+  useEffect(() => { api(`/masters/${kind}`).then(r => setRefs(r.refs || {})).catch(() => {}); }, [kind]);
+
+  async function fetchRows({ search, filter }) {
+    const r = await api(`/masters/${kind}`);
+    const rf = r.refs || {};
+    setRefs(rf);
+    const label = (f, v) => (f.ref ? (rf[f.key] || []).find(o => o.id === String(v))?.label || '' : f.options ? (f.options.find(o => o[0] === v) || [v, v])[1] : String(v ?? ''));
+    const q = search.trim().toLowerCase();
+    const rows = r.rows.filter(x => (!filter || (filter === 'active') === x.isActive) && (!q || cfg.fields.some(f => label(f, x[f.key]).toLowerCase().includes(q))));
+    setListRows(rows);
+    return rows;
+  }
 
   const canSave = form.id ? allowed.includes('edit') : allowed.includes('create');
-  const set = (patch) => { setMessage(''); setForm(f => ({ ...f, ...patch })); };
+  const set = (patch) => { setMessage(''); setDirty(true); setForm(f => ({ ...f, ...patch })); };
+  const toForm = (r) => ({ ...r, ...Object.fromEntries(cfg.fields.filter(f => f.number).map(f => [f.key, r[f.key] === '' || r[f.key] === null ? '' : String(r[f.key])])) });
+
+  function startNew() {
+    if (dirty && !window.confirm('Discard the changes on this screen?')) return;
+    setForm(emptyFor(cfg)); setMessage(''); setError(''); setDirty(false); setMode('form');
+  }
+  function openRow(r) {
+    if (dirty && !window.confirm('Discard the changes on this screen?')) return;
+    setForm(toForm(r)); setMessage(''); setError(''); setDirty(false); setMode('form');
+  }
+  function backToList() {
+    if (dirty && !window.confirm('Discard the changes on this screen and go back to the list?')) return;
+    setLastOpened(form.id || null); setForm(emptyFor(cfg)); setMessage(''); setError(''); setDirty(false); setMode('list');
+  }
 
   async function save() {
-    if (!canSave) return;
+    if (!canSave || busy) return;
     setError(''); setMessage(''); setBusy(true);
     try {
       const saved = form.id
         ? await api(`/masters/${kind}/${form.id}`, { method: 'PUT', body: form })
         : await api(`/masters/${kind}`, { method: 'POST', body: form });
+      setForm(toForm({ ...form, ...saved }));
+      setDirty(false);
       setMessage(`${cfg.title} "${saved.name || saved.code}" saved.`);
-      setForm(emptyFor(cfg));
-      load();
     } catch (e) {
       setError(e.message);
     } finally {
@@ -94,74 +125,88 @@ export default function SimpleMaster({ kind, active, session }) {
   }
 
   useEffect(() => {
-    if (!active) return undefined;
+    if (!active || mode !== 'form') return undefined;
     const onKey = (e) => {
-      if (e.key === 'F2') { e.preventDefault(); setForm(emptyFor(cfg)); setMessage(''); setError(''); }
+      if (e.key === 'F2') { e.preventDefault(); startNew(); }
+      if (e.key === 'F3') { e.preventDefault(); backToList(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  const shown = (rows || []).filter(r => !filter || cfg.fields.some(f => show(f, r[f.key]).toLowerCase().includes(filter.toLowerCase())));
+  if (mode === 'list') {
+    return (
+      <RecordList title={plural(cfg)} active={active} state={listState} setState={setListState} highlightId={lastOpened}
+        onNew={allowed.includes('create') ? startNew : null}
+        onOpen={(id, ids, r) => openRow(r)}
+        placeholder={`Search ${cfg.plural}…`}
+        emptyText={`No ${cfg.plural} yet. Click New to add the first one.`}
+        filters={[{ id: 'active', label: 'Active only' }, { id: 'inactive', label: 'Inactive only' }]}
+        fetchRows={fetchRows}
+        columns={[
+          ...cfg.fields.map((f, i) => ({ label: f.label, num: f.number, cls: i === 0 ? 'o-strong' : '', cell: r => show(f, r[f.key]) })),
+          { label: 'Status', cell: r => <span className={`o-pill ${r.isActive ? 'ok' : 'no'}`}>{r.isActive ? 'Active' : 'Inactive'}</span> }
+        ]} />
+    );
+  }
+
+  const at = form.id ? listRows.findIndex(r => r.id === form.id) : -1;
+  const title = form.id ? (form.name || form.code) : `New ${cfg.title.toLowerCase()}`;
+  const half = Math.ceil(cfg.fields.length / 2);
+  const fieldOf = (f) => (
+    <Field key={f.key} label={f.label} req={f.required} title={f.hint || undefined}>
+      {f.options || f.ref ? (
+        <select aria-label={f.label} className="inp" value={form[f.key] ?? ''} onChange={e => set({ [f.key]: e.target.value })}>
+          <option value="">{f.empty || 'Select'}</option>
+          {f.options
+            ? f.options.map(([v, label]) => <option key={v} value={v}>{label}</option>)
+            : (refs[f.key] || []).filter(o => o.isActive || o.id === String(form[f.key])).map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </select>
+      ) : (
+        <input aria-label={f.label} className="inp" maxLength={f.max} inputMode={f.number ? 'decimal' : undefined} placeholder={f.hint || ''}
+          value={form[f.key] ?? ''} onChange={e => set({ [f.key]: f.upper ? e.target.value.toUpperCase() : e.target.value })} />
+      )}
+    </Field>
+  );
 
   return (
-    <div className="screen">
-      <div className="screen-head">
-        <h1 className="screen-title">{cfg.title}</h1>
-        <span className={`chip ${form.id ? 'chip-amber' : 'chip-grey'}`}>{form.id ? 'EDITING' : 'NEW'}</span>
-        <span className="hint" style={{ marginLeft: 'auto' }}>Fields marked <span className="req">*</span> are required</span>
-      </div>
-      <div className="toolbar">
-        <button type="button" className="tb" onClick={() => { setForm(emptyFor(cfg)); setMessage(''); setError(''); }}>+ New <kbd className="tb-kbd">F2</kbd></button>
-        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
-        <input className="inp" style={{ marginLeft: 'auto', width: 260 }} placeholder={`Search ${cfg.plural}`} value={filter} onChange={e => setFilter(e.target.value)} />
-      </div>
-      {error && <div className="alert alert-error" role="alert">{error}</div>}
-      {message && <div className="alert alert-success" role="status">{message}</div>}
-
-      <section className="panel">
-        <div className="panel-head">{form.id ? `Change ${cfg.title.toLowerCase()}` : `New ${cfg.title.toLowerCase()}`}</div>
-        <div className="master-form">
-          {cfg.fields.map(f => (
-            <label key={f.key} className="f" style={{ width: f.width || 260 }} title={f.hint || undefined}>
-              <span>{f.label} {f.required && <span className="req">*</span>}</span>
-              {f.options || f.ref ? (
-                <select className="inp" value={form[f.key]} onChange={e => set({ [f.key]: e.target.value })}>
-                  <option value="">{f.empty || 'Select'}</option>
-                  {f.options
-                    ? f.options.map(([v, label]) => <option key={v} value={v}>{label}</option>)
-                    : (refs[f.key] || []).filter(o => o.isActive || o.id === String(form[f.key])).map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
-              ) : (
-                <input className="inp" maxLength={f.max} inputMode={f.number ? 'decimal' : undefined} placeholder={f.hint || ''}
-                  value={form[f.key]} onChange={e => set({ [f.key]: f.upper ? e.target.value.toUpperCase() : e.target.value })} />
-              )}
-            </label>
-          ))}
-          {form.id && (
-            <label className="check master-active"><input type="checkbox" checked={form.isActive} onChange={e => set({ isActive: e.target.checked })} /> Active</label>
+    <div className="o-page no-chat">
+      <ControlPanel crumbs={[{ label: plural(cfg), onClick: backToList }, { label: title }]}
+        pager={at >= 0 ? { index: at, total: listRows.length, onPrev: () => openRow(listRows[at - 1]), onNext: () => openRow(listRows[at + 1]) } : null}>
+        <AllButton label={`All ${cfg.plural}`} onClick={backToList} />
+        {form.id && allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
+        {dirty && form.id && <span className="chip chip-amber">unsaved changes</span>}
+      </ControlPanel>
+      <div className="o-form">
+        <div className="o-main o-main-narrow">
+          <StatusBar>
+            <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
+          </StatusBar>
+          {error && <div className="alert alert-error" role="alert">{error}</div>}
+          {message && (
+            <div className="alert alert-success o-saved" role="status">
+              <span>{message}</span>
+              <button type="button" className="tb" onClick={backToList}>See it in All {cfg.plural}</button>
+              {allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>Add another</button>}
+            </div>
           )}
+          <section className="o-sheet">
+            <div className="o-title"><span>{cfg.title}{form.id && !form.isActive ? ' · inactive' : ''}</span><h1>{title}</h1></div>
+            <div className="o-groups">
+              <div>{cfg.fields.slice(0, half).map(fieldOf)}</div>
+              <div>
+                {cfg.fields.slice(half).map(fieldOf)}
+                {form.id && (
+                  <Field label="Status" title="Inactive records stay in old documents but can't be picked in new ones">
+                    <label className="o-checks"><span><input type="checkbox" checked={form.isActive} onChange={e => set({ isActive: e.target.checked })} /> Active</span></label>
+                  </Field>
+                )}
+              </div>
+            </div>
+          </section>
         </div>
-      </section>
-
-      <section className="panel">
-        <div className="panel-head">All {cfg.plural.toLowerCase()}{rows ? ` · ${rows.length}` : ''}</div>
-        <table className="og master-table">
-          <thead><tr>{cfg.fields.map(f => <th key={f.key} className={f.number ? 'num' : ''}>{f.label}</th>)}<th style={{ width: 90 }}>Status</th></tr></thead>
-          <tbody>
-            {rows === null && !error && <tr><td colSpan={cfg.fields.length + 1} className="empty-row">Loading…</td></tr>}
-            {rows && shown.length === 0 && <tr><td colSpan={cfg.fields.length + 1} className="empty-row">{rows.length ? 'Nothing matches the search.' : `No ${cfg.plural} yet. Fill the form above and save.`}</td></tr>}
-            {shown.map(r => (
-              <tr key={r.id} className={`find-row ${form.id === r.id ? 'sel' : ''}`} tabIndex={0}
-                onClick={() => { setForm({ ...r, ...Object.fromEntries(cfg.fields.filter(f => f.number).map(f => [f.key, r[f.key] === '' ? '' : String(r[f.key])])) }); setMessage(''); setError(''); }}>
-                {cfg.fields.map(f => <td key={f.key} className={f.number ? 'num' : ''}>{show(f, r[f.key])}</td>)}
-                <td><span className={`chip ${r.isActive ? 'chip-teal' : 'chip-grey'}`}>{r.isActive ? 'Active' : 'Inactive'}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+      </div>
     </div>
   );
 }

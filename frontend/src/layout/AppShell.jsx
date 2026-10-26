@@ -36,7 +36,7 @@ const Icon = {
 };
 
 // Screens built with the record layout (list -> form, chatter on the right) fill the page edge to edge
-const FLUSH_SCREENS = ['orderEntry'];
+const FLUSH_SCREENS = ['orderEntry', 'costing', 'bom', 'party', 'brand', 'season', 'currency', 'itemGroup', 'item'];
 const TILE_COLOURS = ['#0F766E', '#1D4ED8', '#B45309', '#7C3AED', '#BE123C', '#047857', '#0369A1', '#4D7C0F'];
 
 // App icons on Home (Odoo-style launcher): one picture and colour per module

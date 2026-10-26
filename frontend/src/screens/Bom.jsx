@@ -1,13 +1,16 @@
 // BOM screen: the material one order line needs, split by the process it is issued to
 // (Cutting, Stitching, Finishing). Each item sits in its own process, set on the item master.
+// Opens on All BOMs (every order line with its BOM status); click a line for its BOM.
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
-import BomSearch from './BomSearch.jsx';
-import FlowStrip, { lineSteps, daysTo } from '../components/FlowStrip.jsx';
-import SidePanel from '../components/SidePanel.jsx';
+import { daysTo } from '../components/FlowStrip.jsx';
 import BomItemPicker from './BomItemPicker.jsx';
+import RecordList from '../components/RecordList.jsx';
+import Chatter from '../components/Chatter.jsx';
+import { ControlPanel, StatusBar, SmartButtons, Field, AllButton, SheetTabs } from '../components/RecordBar.jsx';
 
-const COLOURS = ['#0F766E', '#2563EB', '#D97706', '#7C3AED', '#DB2777', '#0891B2'];
+const STATUS = { none: ['No BOM', 'no'], draft: ['Draft', 'wr'], approved: ['Approved', 'ok'] };
+
 let keySeq = 0;
 const newKey = () => `b${++keySeq}`;
 const n = (v) => { const x = Number(String(v ?? '').replace(/,/g, '')); return Number.isFinite(x) ? x : 0; };
@@ -39,7 +42,10 @@ export default function Bom({ active, session, onGo, request }) {
   const [lines, setLines] = useState([]);
   const [remarks, setRemarks] = useState('');
   const [tab, setTab] = useState(null);             // process id shown in the grid
-  const [findOpen, setFindOpen] = useState(false);
+  const [mode, setMode] = useState('list');         // 'list' = All BOMs, 'form' = one order line's BOM
+  const [listState, setListState] = useState({ search: '', filter: '' });
+  const [listIds, setListIds] = useState([]);
+  const [lastOpened, setLastOpened] = useState(null);
   const [picker, setPicker] = useState(null);       // process object, or 'all'
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -68,7 +74,6 @@ export default function Bom({ active, session, onGo, request }) {
   const readOnly = !data || approved;
   const canSave = !readOnly && (data.bom ? allowed.includes('edit') : allowed.includes('create'));
   const orderQty = data?.order.qty || 0;
-  const colourOf = (pid) => COLOURS[processes.findIndex(p => String(p.id) === String(pid)) % COLOURS.length];
 
   const setLine = (key, patch) => { setMessage(''); setDirty(true); setLines(ls => ls.map(l => (l.key === key ? { ...l, ...patch } : l))); };
   const removeLine = (key) => { setDirty(true); setLines(ls => ls.filter(l => l.key !== key)); };
@@ -106,8 +111,14 @@ export default function Bom({ active, session, onGo, request }) {
     if (dirty && !window.confirm('Discard the changes on this screen and open another order?')) return;
     try {
       load(await api(`/bom/order/${orderLineId}`));
-      setFindOpen(false); setError(''); setMessage('');
-    } catch (e) { setError(e.message); setFindOpen(false); }
+      setMode('form'); setError(''); setMessage('');
+    } catch (e) { setError(e.message); }
+  }
+  function backToList() {
+    if (dirty && !window.confirm('Discard the changes on this screen and go back to the list?')) return;
+    setLastOpened(data?.order.orderLineId || null);
+    setData(null); setLines([]); setRemarks(''); setDirty(false); setError(''); setMessage('');
+    setMode('list');
   }
 
   async function pullFromCosting() {
@@ -145,98 +156,128 @@ export default function Bom({ active, session, onGo, request }) {
   }
 
   useEffect(() => {
-    if (!active || picker) return undefined;
+    if (!active || picker || mode !== 'form') return undefined;
     const onKey = (e) => {
-      if (e.key === 'F3') { e.preventDefault(); setFindOpen(true); }
+      if (e.key === 'F3') { e.preventDefault(); backToList(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  const status = !data ? ['NO ORDER PICKED', 'chip-grey'] : !data.bom ? ['NEW', 'chip-grey'] : approved ? ['APPROVED', 'chip-teal'] : dirty ? ['DRAFT · CHANGES PENDING', 'chip-amber'] : ['DRAFT', 'chip-amber'];
+  if (mode === 'list' || !data) {
+    return (
+      <>
+        {error && <div className="alert alert-error" role="alert">{error}</div>}
+        <RecordList title="BOMs" active={active} state={listState} setState={setListState} highlightId={lastOpened}
+          rowId={r => r.orderLineId}
+          onOpen={(id, ids) => { setListIds(ids); openOrder(id); }}
+          placeholder="Search order no., style, brand or buyer PO…"
+          emptyText="No order lines yet. Make an order in Order entry first."
+          filters={Object.entries(STATUS).map(([id, v]) => ({ id, label: v[0] }))}
+          fetchRows={({ search, filter }) => api(`/bom/orders?${new URLSearchParams(Object.entries({ search, status: filter }).filter(([, v]) => v))}`)}
+          note="Every order line has one BOM. Click a line to make or open its BOM. Latest 200 shown."
+          columns={[
+            { label: 'Order no.', cls: 'order-no', cell: r => r.orderNo },
+            { label: 'Brand', cell: r => r.brand },
+            { label: 'Style', cell: r => <>{r.styleCode} <span className="muted">· {r.styleName}</span></> },
+            { label: 'Colour', cell: r => r.colour },
+            { label: 'Qty', num: true, cell: r => qty(r.qty) },
+            { label: 'Ex-factory', cell: r => fmtDate(r.exFactory) },
+            { label: 'BOM', cell: r => <span className={`o-pill ${STATUS[r.bomStatus][1]}`}>{STATUS[r.bomStatus][0]}{r.bomLines ? ` · ${r.bomLines} items` : ''}</span> }
+          ]} />
+      </>
+    );
+  }
+
   const current = processes.find(p => String(p.id) === String(tab));
   // Warn when the longest lead time does not fit before the ex-factory date
   const longest = Math.max(0, ...lines.map(l => n(l.leadDays)));
-  const left = data ? daysTo(data.order.exFactory) : null;
-  const leadWarn = data && left !== null && longest > 0 && !approved
+  const left = daysTo(data.order.exFactory);
+  const leadWarn = left !== null && longest > 0 && !approved
     ? (longest >= left ? `Ex-factory in ${left} days · longest lead time ${longest} days – material will be late` : `Ex-factory in ${left} days · longest lead time ${longest} days`)
     : '';
   const tabLines = lines.filter(l => l.processId === String(tab));
+  const at = listIds.indexOf(data.order.orderLineId);
+  const canApproveHere = data.bom && allowed.includes('approve') && has('order.bom.approve');
+  const steps = [
+    { label: 'Not started', state: data.bom ? 'done' : 'on' },
+    { label: 'Draft', state: !data.bom ? '' : approved ? 'done' : 'on' },
+    { label: 'Approved', state: approved ? 'on' : '' }
+  ];
 
   return (
-    <div className="screen">
-      {findOpen && <BomSearch onOpen={openOrder} onClose={() => setFindOpen(false)} />}
+    <div className="o-page">
       {picker && (
         <BomItemPicker process={picker === 'all' ? null : picker} processes={processes} existing={new Set(lines.map(l => l.itemId))}
           onClose={() => setPicker(null)} onAdd={(list) => { addLines(list); setPicker(null); }} />
       )}
+      <ControlPanel crumbs={[{ label: 'BOMs', onClick: backToList }, { label: `BOM · ${data.order.orderNo}` }]}
+        pager={at >= 0 ? { index: at, total: listIds.length, onPrev: () => openOrder(listIds[at - 1]), onNext: () => openOrder(listIds[at + 1]) } : null}>
+        <AllButton label="All BOMs" onClick={backToList} />
+        {dirty && <span className="chip chip-amber">unsaved changes</span>}
+      </ControlPanel>
 
-      <div className="screen-head">
-        <h1 className="screen-title">BOM{data && <span className="doc-no">{data.order.orderNo}</span>}</h1>
-        <span className={`chip ${status[1]}`}>{status[0]}</span>
-      </div>
-      <div className="toolbar">
-        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Pick order <kbd className="tb-kbd">F3</kbd></button>
-        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
-        {has('order.bom.from_costing') && (
-          <button type="button" className="tb" disabled={readOnly || !data.finalCosting} onClick={pullFromCosting}
-            title={data && !data.finalCosting ? 'This order has no Final costing yet' : 'Add the fabric, trims and packing items of the Final costing'}>Pull from costing</button>
-        )}
-        {has('order.bom.print') && <button type="button" className="tb tb-soon" style={{ marginLeft: 'auto' }} title="Coming in a later phase">Print</button>}
-      </div>
-
-      {error && <div className="alert alert-error" role="alert">{error}</div>}
-      {message && <div className="alert alert-success" role="status">{message}</div>}
-
-      {!data ? (
-        <section className="panel bom-empty">
-          <h2>Pick an order to start its BOM</h2>
-          <p className="hint">Press F3 or click "Pick order". Orders show whether their BOM is not started, a draft or approved.</p>
-          <button type="button" className="tb tb-primary" onClick={() => setFindOpen(true)}>Pick order <kbd className="tb-kbd">F3</kbd></button>
-        </section>
-      ) : (
-        <>
-          {flow && <FlowStrip steps={lineSteps(flow, 'bom', onGo)} warn={leadWarn} />}
-          <div className="page-cols">
-          <div className="page-main">
-          <section className="panel">
-            <div className="panel-head">Order</div>
-            <div className="form-grid bom-head">
-              <label className="f"><span>Order no.</span><span className="ro">{data.order.orderNo}</span></label>
-              <label className="f"><span>Style</span><span className="ro">{data.order.styleCode} · {data.order.styleName}</span></label>
-              <label className="f"><span>Brand / colour</span><span className="ro">{data.order.brand} · {data.order.colour}</span></label>
-              <label className="f"><span>Order qty</span><span className="ro">{qty(orderQty)} pcs</span></label>
-              <label className="f"><span>Ex-factory</span><span className="ro">{fmtDate(data.order.exFactory)}</span></label>
-              <label className="f" title="Items and rates come from this costing"><span>Final costing</span>
-                <span className="ro">{data.finalCosting ? `${data.finalCosting.costingNo} · ${data.finalCosting.buyer}` : 'None yet'}</span>
-              </label>
-              <label className="f"><span>Material budget</span><span className="ro">₹ {money(totals.budget)}</span></label>
-              <label className="f"><span>Remarks</span>
-                <input className="inp" disabled={readOnly} maxLength={1000} value={remarks} onChange={e => { setRemarks(e.target.value); setDirty(true); }} />
-              </label>
+      <div className="o-form">
+        <div className="o-main">
+          <StatusBar steps={steps}>
+            <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
+            {has('order.bom.from_costing') && !approved && (
+              <button type="button" className="tb tb-line" disabled={readOnly || !data.finalCosting} onClick={pullFromCosting}
+                title={!data.finalCosting ? 'This order has no Final costing yet' : 'Add the fabric, trims and packing items of the Final costing'}>Pull from costing</button>
+            )}
+            {canApproveHere && (approved
+              ? <button type="button" className="tb" onClick={() => changeStatus('reopen')}>Reopen for changes</button>
+              : <button type="button" className="tb tb-line" onClick={() => changeStatus('approve')}>Approve &amp; lock</button>)}
+            {has('order.bom.print') && <button type="button" className="tb" title="Coming in a later phase">Print</button>}
+          </StatusBar>
+          {error && <div className="alert alert-error" role="alert">{error}</div>}
+          {message && (
+            <div className="alert alert-success o-saved" role="status">
+              <span>{message}</span>
+              <button type="button" className="tb" onClick={backToList}>See it in All BOMs</button>
             </div>
-          </section>
+          )}
 
-          <div className="cost-cards bom-cards" role="tablist" aria-label="Processes">
-            {processes.map(p => {
+          <section className="o-sheet">
+            <SmartButtons items={[
+              { icon: '▤', value: data.order.orderNo.split('/').pop(), label: 'Order', onClick: () => flow && onGo('orderEntry', { orderId: flow.line.orderId }) },
+              { icon: '₹', value: data.finalCosting ? data.finalCosting.costingNo.split('/').pop() : 'Not made', label: 'Final costing', tone: data.finalCosting ? 'ok' : 'warn',
+                onClick: () => onGo('costing', flow?.costing ? { costingId: flow.costing.id } : { newForLine: data.order.orderLineId }) },
+              { icon: '↓', value: '—', label: 'Purchase' },
+              { icon: '≡', value: lines.length, label: lines.length === 1 ? 'Item' : 'Items' }
+            ]} />
+            <div className="o-title">
+              <span>BOM{approved ? ' · approved and locked' : data.bom ? ' · draft' : ' · not saved yet'}</span>
+              <h1>{data.order.orderNo}</h1>
+              {leadWarn && <p className="o-warn">{leadWarn}</p>}
+            </div>
+            <div className="o-groups">
+              <div>
+                <Field label="Style">{data.order.styleCode} · {data.order.styleName}</Field>
+                <Field label="Brand / colour">{data.order.brand} · {data.order.colour}</Field>
+                <Field label="Order qty">{qty(orderQty)} pcs</Field>
+                <Field label="Ex-factory">{fmtDate(data.order.exFactory)}</Field>
+              </div>
+              <div>
+                <Field label="Final costing" title="Items and rates come from this costing">{data.finalCosting ? `${data.finalCosting.costingNo} · ${data.finalCosting.buyer}` : 'None yet'}</Field>
+                <Field label="Material budget"><b>₹ {money(totals.budget)}</b></Field>
+                <Field label={approved ? 'Approved by' : 'Last saved by'}>
+                  {approved ? `${data.bom.approvedBy} · ${new Date(data.bom.approvedAt).toLocaleDateString('en-IN')}` : data.bom ? data.bom.updatedBy : 'Not saved yet'}
+                </Field>
+                <Field label="Remarks">
+                  <input aria-label="Remarks" className="inp" disabled={readOnly} maxLength={1000} value={remarks} onChange={e => { setRemarks(e.target.value); setDirty(true); }} />
+                </Field>
+              </div>
+            </div>
+
+            <SheetTabs value={String(tab)} onChange={setTab} tabs={processes.map(p => {
               const t = totals.per[String(p.id)] || { count: 0, amount: 0 };
-              return (
-                <button key={p.id} type="button" role="tab" aria-selected={String(tab) === String(p.id)}
-                  className={`cost-card ${String(tab) === String(p.id) ? 'on' : ''}`} style={{ '--c': colourOf(p.id) }} onClick={() => setTab(String(p.id))}>
-                  <span>{p.name}</span>
-                  <b>{t.count} item{t.count === 1 ? '' : 's'}</b>
-                  <small>₹ {money(t.amount)}</small>
-                </button>
-              );
-            })}
-          </div>
-
-          <section className="panel cost-lines">
-            <div className="cost-lines-head">
-              <b>{current?.name}</b>
+              return [String(p.id), `${p.name} (${t.count}) · ₹ ${money(t.amount)}`];
+            })} />
+            <div className="cost-lines-head o-lines-head">
               <span className="hint">Items issued to the {current?.name.toLowerCase()} department · {tabLines.length} item{tabLines.length === 1 ? '' : 's'}</span>
-              {!readOnly && <button type="button" className="tb tb-primary" style={{ marginLeft: 'auto' }} onClick={() => setPicker(current)}>+ Add items</button>}
+              {!readOnly && <button type="button" className="tb tb-line" style={{ marginLeft: 'auto' }} onClick={() => setPicker(current)}>+ Add items</button>}
             </div>
             <div className="grid-scroll">
               {tabLines.length === 0 ? (
@@ -284,31 +325,9 @@ export default function Bom({ active, session, onGo, request }) {
               )}
             </div>
           </section>
-          </div>
-          <SidePanel entity={data.bom ? 'bom' : null} entityId={data.bom?.id} refreshKey={data}
-            linked={[
-              { label: 'Order', value: data.order.orderNo, tone: 'ok', onClick: () => onGo('orderEntry', { orderId: flow?.line.orderId }) },
-              { label: 'Final costing', value: data.finalCosting ? data.finalCosting.costingNo : 'Not made', tone: data.finalCosting ? 'ok' : 'warn',
-                onClick: () => onGo('costing', flow?.costing ? { costingId: flow.costing.id } : { newForLine: data.order.orderLineId }) },
-              { label: 'Purchase orders', value: 'Comes with Purchase' }
-            ]}>
-            <section className="side-box">
-              <h2>Approval</h2>
-              <div className="side-row"><span>Status</span><b className={`side-val ${approved ? 'ok' : 'warn'}`}>{!data.bom ? 'Not saved' : approved ? 'Approved · locked' : 'Draft'}</b></div>
-              {approved && <div className="side-row"><span>Approved by</span><b>{data.bom.approvedBy} · {new Date(data.bom.approvedAt).toLocaleDateString('en-IN')}</b></div>}
-              {data.bom && !approved && <div className="side-row"><span>Last saved by</span><b>{data.bom.updatedBy}</b></div>}
-              {data.bom && allowed.includes('approve') && has('order.bom.approve') && (
-                <div className="side-act">
-                  {approved
-                    ? <button type="button" className="tb" onClick={() => changeStatus('reopen')}>Reopen for changes</button>
-                    : <button type="button" className="tb tb-primary" onClick={() => changeStatus('approve')}>Approve &amp; lock</button>}
-                </div>
-              )}
-            </section>
-          </SidePanel>
-          </div>
-        </>
-      )}
+        </div>
+        <Chatter entity="bom" entityId={data.bom?.id} refreshKey={data} />
+      </div>
     </div>
   );
 }

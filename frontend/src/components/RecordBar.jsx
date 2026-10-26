@@ -52,3 +52,34 @@ export function SmartButtons({ items }) {
     </div>
   );
 }
+
+// One label-left field of a record sheet: "Brand   Urban Thread (UTH)"
+export function Field({ label, req, title, wide, children }) {
+  return (
+    <div className={`o-row ${wide ? 'wide' : ''}`} title={title}>
+      <span className="o-lbl">{label}{req && <span className="req"> *</span>}</span>
+      <div className="o-val">{children}</div>
+    </div>
+  );
+}
+
+// "All orders (F3)" – back to the list of saved records, on every record screen
+export function AllButton({ label, onClick }) {
+  return (
+    <button type="button" className="tb" onClick={onClick} title={`See all saved ${label.replace(/^All /, '')}, search and open one`}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>
+      {label} <kbd className="tb-kbd">F3</kbd>
+    </button>
+  );
+}
+
+// Tabs inside a sheet: [['lines', 'Order lines (2)'], ['other', 'Other info']]
+export function SheetTabs({ tabs, value, onChange }) {
+  return (
+    <div className="o-tabs" role="tablist">
+      {tabs.map(([id, label]) => (
+        <button key={id} type="button" role="tab" aria-selected={value === id} className={value === id ? 'on' : ''} onClick={() => onChange(id)}>{label}</button>
+      ))}
+    </div>
+  );
+}

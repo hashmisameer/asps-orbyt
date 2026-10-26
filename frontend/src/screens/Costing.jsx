@@ -1,16 +1,15 @@
 // Costing screen: cost of one garment for a style or an order line.
-//   Top:    title, buttons, and the flow strip (Order -> Costing -> BOM -> Purchase) when the costing is for an order
-//   Left:   costing details (a short summary once saved; "Edit details" opens the fields), one card per cost
-//           section, and the lines of the picked section
-//   Right:  Linked (order, BOM, buyer), Revisions and Last changes
+//   Opens on All costings (list). Click a costing for its form:
+//   buttons and stages (Initial › Final › Actual), smart buttons (order, BOM, revisions), costing details,
+//   one card per cost section with the lines of the picked section, and notes / changes on the right.
 // Amounts are worked out here as you type and worked out again by the server on save.
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import DateInput from '../components/DateInput.jsx';
-import FlowStrip, { lineSteps } from '../components/FlowStrip.jsx';
-import SidePanel from '../components/SidePanel.jsx';
-import CostingSearch from './CostingSearch.jsx';
 import ItemPicker from './ItemPicker.jsx';
+import RecordList from '../components/RecordList.jsx';
+import Chatter from '../components/Chatter.jsx';
+import { ControlPanel, StatusBar, SmartButtons, Field, AllButton, SheetTabs } from '../components/RecordBar.jsx';
 
 const SECTIONS = [
   { key: 'fabric', name: 'Fabric', colour: '#0F766E' },
@@ -67,8 +66,11 @@ export default function Costing({ active, session, onGo, request }) {
   const [lines, setLines] = useState([]);
   const [tab, setTab] = useState('fabric');             // section whose lines are shown
   const [picker, setPicker] = useState(null);            // section whose item picker is open
-  const [editDetails, setEditDetails] = useState(false);  // saved costing: show all detail fields
-  const [findOpen, setFindOpen] = useState(false);
+  const [mode, setMode] = useState('list');               // 'list' = All costings, 'form' = one costing
+  const [listState, setListState] = useState({ search: '', filter: '' });
+  const [listIds, setListIds] = useState([]);
+  const [lastOpened, setLastOpened] = useState(null);
+  const [sheetTab, setSheetTab] = useState('cost');        // 'cost' sheet or 'rev' revisions
   const [flow, setFlow] = useState(null);
   const [viewing, setViewing] = useState(null);          // an older revision shown read-only
   const [busy, setBusy] = useState(false);
@@ -156,17 +158,23 @@ export default function Costing({ active, session, onGo, request }) {
 
   function startNew() {
     if (dirty && !window.confirm('Discard the changes on this screen and start a new costing?')) return;
-    setSaved(null); setViewing(null); setHeader(blankHeader()); setLines([]); setTab('fabric'); setEditDetails(false);
-    setError(''); setMessage(''); setDirty(false);
+    setSaved(null); setViewing(null); setHeader(blankHeader()); setLines([]); setTab('fabric'); setSheetTab('cost');
+    setError(''); setMessage(''); setDirty(false); setMode('form');
+  }
+  function backToList() {
+    if (dirty && !window.confirm('Discard the changes on this screen and go back to the list?')) return;
+    setLastOpened(saved?.id || null);
+    setSaved(null); setViewing(null); setHeader(blankHeader()); setLines([]); setTab('fabric');
+    setError(''); setMessage(''); setDirty(false); setMode('list');
   }
 
   async function openCosting(id) {
     if (dirty && !window.confirm('Discard the changes on this screen and open the selected costing?')) return;
     try {
       loadCosting(await api(`/costing/${id}`));
-      setEditDetails(false); setFindOpen(false);
+      setSheetTab('cost'); setMode('form');
       setError(''); setMessage('');
-    } catch (e) { setError(e.message); setFindOpen(false); }
+    } catch (e) { setError(e.message); }
   }
 
   async function viewRevision(rev) {
@@ -202,17 +210,18 @@ export default function Costing({ active, session, onGo, request }) {
     try {
       await api(`/costing/${saved.id}`, { method: 'DELETE' });
       const no = saved.costingNo;
-      setDirty(false); setSaved(null); setViewing(null); setHeader(blankHeader()); setLines([]); setTab('fabric'); setEditDetails(false);
+      setDirty(false); setSaved(null); setViewing(null); setHeader(blankHeader()); setLines([]); setTab('fabric');
+      setLastOpened(null); setMode('list');
       setError(''); setMessage(`Costing ${no} deleted.`);
     } catch (e) { setError(e.message); }
   }
 
-  // Keyboard: F2 new, F3 search, Ctrl+S save (only while this tab is on screen and no panel is open)
+  // Form keys: F2 new, F3 back to All costings, Ctrl+S save (only while this tab is on screen and no panel is open)
   useEffect(() => {
-    if (!active || picker) return undefined;
+    if (!active || picker || mode !== 'form') return undefined;
     const onKey = (e) => {
       if (e.key === 'F2') { e.preventDefault(); startNew(); }
-      if (e.key === 'F3') { e.preventDefault(); setFindOpen(true); }
+      if (e.key === 'F3') { e.preventDefault(); backToList(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
     };
     window.addEventListener('keydown', onKey);
@@ -235,186 +244,214 @@ export default function Costing({ active, session, onGo, request }) {
     if (t === 'final' && !canApprove) return false;
     return true;
   };
-  const status = viewing ? [`REVISION ${viewing} · READ ONLY`, 'chip-amber'] : !saved ? ['DRAFT · NOT SAVED', 'chip-grey'] : dirty ? ['SAVED · CHANGES PENDING', 'chip-amber'] : ['SAVED', 'chip-teal'];
   const sel = (key, list, label, opts = {}) => (
-    <select className="inp" disabled={readOnly || opts.disabled} value={header[key]} onChange={e => (opts.onPick ? opts.onPick(e.target.value) : setH({ [key]: e.target.value }))}>
+    <select className="inp" aria-label={label} disabled={readOnly || opts.disabled} value={header[key]} onChange={e => (opts.onPick ? opts.onPick(e.target.value) : setH({ [key]: e.target.value }))}>
       <option value="">{opts.placeholder || `Select ${label}`}</option>
       {list.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
     </select>
   );
 
+  if (mode === 'list') {
+    return (
+      <>
+        {error && <div className="alert alert-error" role="alert">{error}</div>}
+        {message && <div className="alert alert-success" role="status">{message}</div>}
+        <RecordList title="Costings" active={active} state={listState} setState={setListState} highlightId={lastOpened}
+          onNew={allowed.includes('create') ? startNew : null}
+          onOpen={(id, ids) => { setListIds(ids); openCosting(id); }}
+          placeholder="Search costing no., buyer, style, order no. or description…"
+          emptyText="No costings yet. Click New to make the first one."
+          filters={Object.entries(TYPE_NAMES).map(([id, label]) => ({ id, label: `${label} costings` }))}
+          fetchRows={({ search, filter }) => api(`/costing?${new URLSearchParams(Object.entries({ search, type: filter }).filter(([, v]) => v))}`)}
+          note="Latest 100 shown. Search to find older costings."
+          columns={[
+            { label: 'Costing no.', cls: 'order-no', cell: r => r.costingNo },
+            { label: 'Rev.', num: true, cell: r => r.revision },
+            { label: 'Type', cell: r => <span className={`o-pill ${r.type === 'final' ? 'ok' : r.type === 'actual' ? 'wr' : 'no'}`}>{TYPE_NAMES[r.type]}</span> },
+            { label: 'Date', cell: r => fmtDate(r.date) },
+            { label: 'Buyer', cell: r => r.buyer },
+            { label: 'Style', cell: r => r.styleCode },
+            { label: 'Order no.', cell: r => r.orderNo || <span className="muted">Style costing</span> },
+            { label: 'Qty', num: true, cell: r => qty(r.orderQty) },
+            { label: 'Base ₹', num: true, cell: r => money(r.baseAmount) },
+            { label: 'Base (currency)', num: true, cell: r => `${r.currency} ${Number(r.baseInCurrency || 0).toFixed(2)}` }
+          ]} />
+      </>
+    );
+  }
+
   const sheet = SECTIONS.find(x => x.key === tab);
   const secLines = lines.filter(l => l.section === tab);
   const material = MATERIAL.includes(tab);
-  const showForm = !saved || editDetails;
-  const typeLabel = TYPE_NAMES[header.type];
-  const summary = [buyer?.name, style && `Style ${style.code}`, lookups.colours.find(c => String(c.id) === header.colourId)?.name,
-    header.orderQty && `${qty(header.orderQty)} pcs`, header.shipMode && (header.shipMode === 'air' ? 'By air' : 'By sea'),
-    currency && `${currency.code}${currency.code !== 'INR' && rate > 0 ? ` @ ${money(rate)}` : ''}`].filter(Boolean).join(' · ');
+  const at = saved ? listIds.indexOf(saved.id) : -1;
+  const title = saved ? saved.costingNo : 'New costing';
+  const order = ['initial', 'final', 'actual'];
+  const steps = order.map((t, i) => ({ label: TYPE_NAMES[t], state: i < order.indexOf(header.type) ? 'done' : t === header.type ? 'on' : '' }));
+  const inCurrency = currency && currency.code !== 'INR' && rate > 0 ? ` · ${currency.code} ${(totals.base / rate).toFixed(2)}` : '';
+  const smart = [
+    ...(header.orderLineId ? [{ icon: '▤', value: orderLine?.orderNo?.split('/').pop() || '—', label: 'Order', onClick: () => flow && onGo('orderEntry', { orderId: flow.line.orderId }) }] : []),
+    ...(header.orderLineId ? [{ icon: '≡', value: flow?.bom ? (flow.bom.status === 'approved' ? 'Approved' : 'Draft') : 'Not made', label: 'BOM',
+      tone: flow?.bom?.status === 'approved' ? 'ok' : 'warn', onClick: () => onGo('bom', { orderLineId: Number(header.orderLineId) }) }] : []),
+    ...(saved && has('order.costing.revisions') ? [{ icon: '↺', value: saved.revisions.length, label: saved.revisions.length === 1 ? 'Revision' : 'Revisions', onClick: () => setSheetTab('rev') }] : []),
+    { icon: '₹', value: money(totals.base), label: 'Base per pc' }
+  ];
 
   return (
-    <div className="screen costing-screen">
-      {findOpen && <CostingSearch onOpen={openCosting} onClose={() => setFindOpen(false)} />}
+    <div className="o-page">
       {picker && <ItemPicker section={picker} canCreateItem={canCreateItem} onClose={() => setPicker(null)} onAdd={(list) => { addLines(picker, list); setPicker(null); }} />}
+      <ControlPanel crumbs={[{ label: 'Costings', onClick: backToList }, { label: viewing ? `${title} · revision ${viewing}` : title }]}
+        pager={at >= 0 ? { index: at, total: listIds.length, onPrev: () => openCosting(listIds[at - 1]), onNext: () => openCosting(listIds[at + 1]) } : null}>
+        <AllButton label="All costings" onClick={backToList} />
+        {saved && allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
+        {dirty && saved && <span className="chip chip-amber">unsaved changes</span>}
+      </ControlPanel>
 
-      <div className="screen-head">
-        <h1 className="screen-title">{saved ? saved.costingNo : 'New costing'}</h1>
-        <span className={`chip ${status[1]}`}>{status[0]}</span>
-      </div>
-      <div className="toolbar">
-        <button type="button" className="tb" onClick={startNew}>+ New <kbd className="tb-kbd">F2</kbd></button>
-        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search <kbd className="tb-kbd">F3</kbd></button>
-        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
-        <span style={{ marginLeft: 'auto' }} />
-        {has('order.costing.print') && <button type="button" className="tb tb-soon" title="Coming in a later phase">Print</button>}
-        {has('order.costing.delete') && saved && (
-          <button type="button" className="tb" onClick={remove} disabled={viewing || saved.type === 'final' || !allowed.includes('edit')}
-            title={saved.type === 'final' ? 'A Final costing can\'t be deleted. Save it as Actual first.' : 'Delete this costing'}>Delete</button>
-        )}
-      </div>
+      <div className="o-form">
+        <div className="o-main">
+          <StatusBar steps={steps}>
+            <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
+            {saved && header.orderLineId && header.type !== 'initial' && !viewing && (
+              <button type="button" className="tb tb-line" onClick={() => onGo('bom', { orderLineId: Number(header.orderLineId) })}>{flow?.bom ? 'Open BOM' : 'Create BOM'}</button>
+            )}
+            {has('order.costing.print') && <button type="button" className="tb" title="Coming in a later phase">Print</button>}
+            {has('order.costing.delete') && saved && (
+              <button type="button" className="tb" onClick={remove} disabled={viewing || saved.type === 'final' || !allowed.includes('edit')}
+                title={saved.type === 'final' ? 'A Final costing can\'t be deleted. Save it as Actual first.' : 'Delete this costing'}>Delete</button>
+            )}
+          </StatusBar>
 
-      {viewing && (
-        <div className="alert alert-warn" role="status">
-          You are looking at revision {viewing} (read only). <button type="button" className="link-btn" onClick={() => viewRevision(saved.revision)}>Back to the latest revision</button>
-        </div>
-      )}
-      {error && <div className="alert alert-error" role="alert">{error}</div>}
-      {message && <div className="alert alert-success" role="status">{message}</div>}
-
-      {flow && <FlowStrip steps={lineSteps(flow, 'costing', onGo)} />}
-
-      <div className="page-cols">
-        <div className="page-main">
-          <section className="panel">
-            <div className="panel-head panel-head-row">
-              <span>Costing details {!showForm && summary && <span className="muted-normal">{summary}</span>}</span>
-              {saved && !viewing && (
-                <button type="button" className="link-btn" onClick={() => setEditDetails(e => !e)}>{editDetails ? 'Show summary' : 'Edit details'}</button>
-              )}
+          {viewing && (
+            <div className="alert alert-warn" role="status">
+              You are looking at revision {viewing} (read only). <button type="button" className="link-btn" onClick={() => viewRevision(saved.revision)}>Back to the latest revision</button>
             </div>
-            {!showForm ? (
-              <div className="form-grid cost-sum">
-                <label className="f"><span>Costing type</span><span className="ro">{typeLabel} costing</span></label>
-                <label className="f"><span>Base amount (1 pc)</span><span className="ro">₹{money(totals.base)}{currency && currency.code !== 'INR' && rate > 0 ? ` · ${currency.code} ${(totals.base / rate).toFixed(2)}` : ''}</span></label>
-                <label className="f"><span>Total amount</span><span className="ro">₹{money(totals.total)}</span></label>
-                <label className="f"><span>Delivery</span><span className="ro">{fmtDate(header.deliveryDate)}</span></label>
-                <label className="f"><span>Season</span><span className="ro">{[lookups.seasons.find(x => String(x.id) === header.seasonId)?.name, header.year].filter(Boolean).join(' ') || '—'}</span></label>
-              </div>
-            ) : (
-              <div className="form-grid cost-head">
-                <label className="f" title="Initial: first costing. Final: shows in BOM (needs Approve). Actual: a closed Final costing; only Actual can be deleted.">
-                  <span>Costing type <span className="req">*</span></span>
-                  <select className="inp" disabled={readOnly} value={header.type} onChange={e => setH({ type: e.target.value })}>
-                    {['initial', 'final', 'actual'].map(t => (
+          )}
+          {error && <div className="alert alert-error" role="alert">{error}</div>}
+          {message && (
+            <div className="alert alert-success o-saved" role="status">
+              <span>{message}</span>
+              {saved && <button type="button" className="tb" onClick={backToList}>See it in All costings</button>}
+            </div>
+          )}
+
+          <section className="o-sheet">
+            <SmartButtons items={smart} />
+            <div className="o-title"><span>{TYPE_NAMES[header.type]} costing</span><h1>{title}</h1></div>
+            <div className="o-groups">
+              <div>
+                <Field label="Costing type" req title="Initial: first costing. Final: shows in BOM (needs Approve). Actual: a closed Final costing; only Actual can be deleted.">
+                  <select aria-label="Costing type" className="inp" disabled={readOnly} value={header.type} onChange={e => setH({ type: e.target.value })}>
+                    {order.map(t => (
                       <option key={t} value={t} disabled={!typeAllowed(t) && header.type !== t}>
                         {TYPE_NAMES[t]} costing{t === 'final' && !canApprove ? ' (needs Approve)' : ''}
                       </option>
                     ))}
                   </select>
-                </label>
-                <label className="f"><span>Buyer <span className="req">*</span></span>{sel('buyerId', lookups.buyers.map(b => ({ id: b.id, label: b.name })), 'buyer')}</label>
-                <label className="f" title="Optional. Picking an order fills style, colour, size range, qty, ship mode and delivery date"><span>Order no.</span>
+                </Field>
+                <Field label="Buyer" req>{sel('buyerId', lookups.buyers.map(b => ({ id: b.id, label: b.name })), 'buyer')}</Field>
+                <Field label="Order no." title="Optional. Picking an order fills style, colour, size range, qty, ship mode and delivery date">
                   {sel('orderLineId', lookups.orderLines.map(o => ({ id: o.id, label: o.orderNo })), 'order', { onPick: pickOrder, placeholder: 'No order (style costing)' })}
-                </label>
-                <label className="f"><span>Style no. <span className="req">*</span></span>
-                  {sel('styleId', lookups.styles.map(x => ({ id: x.id, label: `${x.code} · ${x.name}` })), 'style', { disabled: !!header.orderLineId })}
-                </label>
-                <label className="f"><span>Colour</span>{sel('colourId', lookups.colours.map(c => ({ id: c.id, label: c.name })), 'colour')}</label>
-                <label className="f"><span>Size range</span>{sel('sizeRangeId', lookups.sizeRanges.map(x => ({ id: x.id, label: x.name })), 'size range')}</label>
-                <label className="f" title={header.orderLineId ? 'Comes from the order' : 'Pieces this costing is for'}><span>Order qty <span className="req">*</span></span>
-                  {header.orderLineId || readOnly ? <span className="ro">{header.orderQty ? qty(header.orderQty) : '—'} pcs</span>
-                    : <input className="inp" inputMode="numeric" value={header.orderQty} onChange={e => setH({ orderQty: e.target.value.replace(/[^\d]/g, '') })} />}
-                </label>
-                <label className="f"><span>Ship mode <span className="req">*</span></span>
-                  <select className="inp" disabled={readOnly} value={header.shipMode} onChange={e => setH({ shipMode: e.target.value })}>
+                </Field>
+                <Field label="Style no." req>{sel('styleId', lookups.styles.map(x => ({ id: x.id, label: `${x.code} · ${x.name}` })), 'style', { disabled: !!header.orderLineId })}</Field>
+                <Field label="Colour">{sel('colourId', lookups.colours.map(c => ({ id: c.id, label: c.name })), 'colour')}</Field>
+                <Field label="Size range">{sel('sizeRangeId', lookups.sizeRanges.map(x => ({ id: x.id, label: x.name })), 'size range')}</Field>
+                <Field label="Order qty" req title={header.orderLineId ? 'Comes from the order' : 'Pieces this costing is for'}>
+                  {header.orderLineId || readOnly ? <span>{header.orderQty ? qty(header.orderQty) : '—'} pcs</span>
+                    : <input aria-label="Order qty" className="inp" inputMode="numeric" value={header.orderQty} onChange={e => setH({ orderQty: e.target.value.replace(/[^\d]/g, '') })} />}
+                </Field>
+              </div>
+              <div>
+                <Field label="Ship mode" req>
+                  <select aria-label="Ship mode" className="inp" disabled={readOnly} value={header.shipMode} onChange={e => setH({ shipMode: e.target.value })}>
                     <option value="">Select</option><option value="sea">By sea</option><option value="air">By air</option>
                   </select>
-                </label>
-                <label className="f"><span>Delivery date</span>
-                  {readOnly ? <span className="ro">{fmtDate(header.deliveryDate)}</span>
-                    : <DateInput ariaLabel="Delivery date" value={header.deliveryDate} onChange={v => setH({ deliveryDate: v })} />}
-                </label>
-                <label className="f" title="Currency the buyer pays in"><span>Currency <span className="req">*</span></span>
+                </Field>
+                <Field label="Delivery date">
+                  {readOnly ? fmtDate(header.deliveryDate) : <DateInput ariaLabel="Delivery date" value={header.deliveryDate} onChange={v => setH({ deliveryDate: v })} />}
+                </Field>
+                <Field label="Currency" req title="Currency the buyer pays in">
                   {sel('currencyId', lookups.currencies.map(c => ({ id: c.id, label: `${c.code} · ${c.name}` })), 'currency', { onPick: pickCurrency })}
-                </label>
-                <label className="f" title="1 unit of the currency in rupees"><span>Conversion rate <span className="req">*</span></span>
-                  <input className="inp num-inp" inputMode="decimal" disabled={readOnly} value={header.conversionRate} onChange={e => setH({ conversionRate: e.target.value })} />
-                </label>
-                <div className="f"><span>Season / Year</span>
+                </Field>
+                <Field label="Conversion rate" req title="1 unit of the currency in rupees">
+                  <input aria-label="Conversion rate" className="inp" inputMode="decimal" disabled={readOnly} value={header.conversionRate} onChange={e => setH({ conversionRate: e.target.value })} />
+                </Field>
+                <Field label="Season / Year">
                   <div className="pair">
                     {sel('seasonId', lookups.seasons.map(x => ({ id: x.id, label: x.name })), 'season', { placeholder: 'Season' })}
                     {sel('year', lookups.years.map(y => ({ id: y, label: String(y) })), 'year', { placeholder: 'Year' })}
                   </div>
-                </div>
-                <label className="f" title="Cost of one garment, worked out from all sections"><span>Base amount (1 pc)</span>
-                  <span className="ro">₹ {money(totals.base)}{currency && currency.code !== 'INR' && rate > 0 ? ` · ${currency.code} ${(totals.base / rate).toFixed(2)}` : ''}</span>
-                </label>
-                <label className="f" title="Base amount × order qty"><span>Total amount</span><span className="ro">₹ {money(totals.total)}</span></label>
-                <label className="f span-row"><span>Description</span>
-                  <input className="inp" disabled={readOnly} maxLength={500} value={header.description} onChange={e => setH({ description: e.target.value })} placeholder="e.g. First costing as per tech pack" />
-                </label>
+                </Field>
+                <Field label="Base amount (1 pc)" title="Cost of one garment, worked out from all sections"><b>₹ {money(totals.base)}</b>{inCurrency}</Field>
+                <Field label="Total amount" title="Base amount × order qty"><b>₹ {money(totals.total)}</b></Field>
               </div>
+            </div>
+            <Field label="Description" wide>
+              <input aria-label="Description" className="inp" disabled={readOnly} maxLength={500} value={header.description} onChange={e => setH({ description: e.target.value })} placeholder="e.g. First costing as per tech pack" />
+            </Field>
+
+            <SheetTabs value={sheetTab} onChange={setSheetTab} tabs={[
+              ['cost', `Cost sheet (${lines.length} line${lines.length === 1 ? '' : 's'})`],
+              ...(saved && has('order.costing.revisions') ? [['rev', `Revisions (${saved.revisions.length})`]] : [])
+            ]} />
+
+            {sheetTab === 'cost' && (
+              <>
+                <div className="cost-cards o-cards" role="tablist" aria-label="Cost sections">
+                  {SECTIONS.map(x => {
+                    const count = lines.filter(l => l.section === x.key).length;
+                    const mat = MATERIAL.includes(x.key);
+                    const share = x.key !== 'other_receivable' && totals.gross > 0 ? Math.round((totals.secs[x.key] / totals.gross) * 100) : null;
+                    return (
+                      <button key={x.key} type="button" role="tab" aria-selected={tab === x.key} className={`cost-card ${tab === x.key ? 'on' : ''}`}
+                        style={{ '--c': x.colour }} onClick={() => setTab(x.key)}>
+                        <span>{x.name}</span>
+                        <b>{x.key === 'other_receivable' ? '− ' : ''}₹{money(totals.secs[x.key])}{share !== null && count ? <em>{share}%</em> : null}</b>
+                        <small>
+                          {count ? `${count} ${mat ? 'item' : 'line'}${count === 1 ? '' : 's'}` : mat ? 'no items' : 'no lines'}
+                          {x.key === 'other_receivable' ? ' · taken off' : ''}
+                        </small>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="cost-lines-head o-lines-head">
+                  <b>{sheet.name}</b>
+                  <span className="hint">
+                    {secLines.length} {material ? 'item' : 'line'}{secLines.length === 1 ? '' : 's'} · ₹ {money(totals.secs[tab])} per garment
+                    {tab === 'other_receivable' ? ' · taken off the base amount' : ''}
+                  </span>
+                  {!readOnly && (
+                    <button type="button" className="tb tb-line" style={{ marginLeft: 'auto' }}
+                      onClick={() => (material ? setPicker(tab) : addLines(tab, [{}]))}>{material ? '+ Add items' : '+ Add line'}</button>
+                  )}
+                </div>
+                <div className="grid-scroll">
+                  {secLines.length === 0
+                    ? <p className="empty-row">{material ? `No ${sheet.name.toLowerCase()} items yet. Click "+ Add items".` : 'No lines yet. Click "+ Add line".'}</p>
+                    : <SectionGrid section={tab} lines={secLines} lookups={lookups} readOnly={readOnly} onChange={setLine} onCurrency={pickLineCurrency} onRemove={removeLine} />}
+                </div>
+              </>
+            )}
+
+            {sheetTab === 'rev' && saved && (
+              <table className="og o-flow-table">
+                <thead><tr><th>Revision</th><th>Saved on</th><th>Saved by</th><th /></tr></thead>
+                <tbody>
+                  {saved.revisions.map(r => (
+                    <tr key={r.revision} className={(viewing || saved.revision) === r.revision ? 'o-hl' : ''}>
+                      <td><b>Revision {r.revision}</b>{r.revision === saved.revision && <span className="o-pill ok" style={{ marginLeft: 6 }}>Latest</span>}</td>
+                      <td>{new Date(r.savedAt).toLocaleString('en-IN')}</td>
+                      <td>{r.savedBy}</td>
+                      <td>{(viewing || saved.revision) === r.revision
+                        ? <span className="muted">On screen</span>
+                        : <button type="button" className="o-link" onClick={() => { viewRevision(r.revision); setSheetTab('cost'); }}>Look at it</button>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </section>
-
-          <div className="cost-cards" role="tablist" aria-label="Cost sections">
-            {SECTIONS.map(x => {
-              const count = lines.filter(l => l.section === x.key).length;
-              const mat = MATERIAL.includes(x.key);
-              const share = x.key !== 'other_receivable' && totals.gross > 0 ? Math.round((totals.secs[x.key] / totals.gross) * 100) : null;
-              return (
-                <button key={x.key} type="button" role="tab" aria-selected={tab === x.key} className={`cost-card ${tab === x.key ? 'on' : ''}`}
-                  style={{ '--c': x.colour }} onClick={() => setTab(x.key)}>
-                  <span>{x.name}</span>
-                  <b>{x.key === 'other_receivable' ? '− ' : ''}₹{money(totals.secs[x.key])}{share !== null && count ? <em>{share}%</em> : null}</b>
-                  <small>
-                    {count ? `${count} ${mat ? 'item' : 'line'}${count === 1 ? '' : 's'}` : mat ? 'no items' : 'no lines'}
-                    {x.key === 'other_receivable' ? ' · taken off' : ''}
-                  </small>
-                </button>
-              );
-            })}
-          </div>
-
-          <section className="panel cost-lines">
-            <div className="cost-lines-head">
-              <b>{sheet.name}</b>
-              <span className="hint">
-                {secLines.length} {material ? 'item' : 'line'}{secLines.length === 1 ? '' : 's'} · ₹ {money(totals.secs[tab])} per garment
-                {tab === 'other_receivable' ? ' · taken off the base amount' : ''}
-              </span>
-              {!readOnly && (
-                <button type="button" className="tb" style={{ marginLeft: 'auto' }}
-                  onClick={() => (material ? setPicker(tab) : addLines(tab, [{}]))}>{material ? '+ Add items' : '+ Add line'}</button>
-              )}
-            </div>
-            <div className="grid-scroll">
-              {secLines.length === 0
-                ? <p className="empty-row">{material ? `No ${sheet.name.toLowerCase()} items yet. Click "+ Add items".` : 'No lines yet. Click "+ Add line".'}</p>
-                : <SectionGrid section={tab} lines={secLines} lookups={lookups} readOnly={readOnly} onChange={setLine} onCurrency={pickLineCurrency} onRemove={removeLine} />}
-            </div>
-          </section>
         </div>
-
-        <SidePanel entity={saved ? 'costing' : null} entityId={saved?.id} refreshKey={saved}
-          linked={[
-            ...(header.orderLineId ? [{ label: 'Order', value: orderLine?.orderNo || '—', tone: 'ok', onClick: () => flow && onGo('orderEntry', { orderId: flow.line.orderId }) }] : []),
-            ...(header.orderLineId ? [{ label: 'BOM', value: flow?.bom ? (flow.bom.status === 'approved' ? 'Approved' : 'Draft') : 'Not made',
-              tone: flow?.bom?.status === 'approved' ? 'ok' : 'warn', onClick: () => onGo('bom', { orderLineId: Number(header.orderLineId) }) }] : []),
-            ...(buyer ? [{ label: 'Buyer', value: buyer.name }] : [])
-          ]}>
-          {saved && has('order.costing.revisions') && (
-            <section className="side-box">
-              <h2>Revisions</h2>
-              {saved.revisions.map(r => (
-                <button key={r.revision} type="button" className={`side-row side-rev ${(viewing || saved.revision) === r.revision ? 'on' : ''}`} onClick={() => viewRevision(r.revision)}>
-                  <b>Revision {r.revision}{r.revision === saved.revision ? ' (latest)' : ''}</b>
-                  <span>{new Date(r.savedAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit' })} · {r.savedBy}</span>
-                </button>
-              ))}
-            </section>
-          )}
-        </SidePanel>
+        <Chatter entity="costing" entityId={saved?.id} refreshKey={saved} />
       </div>
     </div>
   );

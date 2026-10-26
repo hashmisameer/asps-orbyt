@@ -1,61 +1,12 @@
 // Brand master: brand code (goes into the order no., e.g. ORD/26-27/NWA/0001), brand name, buyer, currency, export flag.
-// Same look and keys as Party master: + New (F2), Search (F3), Save (Ctrl+S).
-import { useEffect, useRef, useState } from 'react';
+// Opens on All brands (list); click a brand for its form. Keys: New (F2), All brands (F3), Save (Ctrl+S).
+import { useEffect, useState } from 'react';
 import { api } from '../api.js';
-import SidePanel from '../components/SidePanel.jsx';
+import RecordList from '../components/RecordList.jsx';
+import Chatter from '../components/Chatter.jsx';
+import { ControlPanel, StatusBar, SmartButtons, Field, AllButton } from '../components/RecordBar.jsx';
 
 const blank = () => ({ code: '', name: '', buyerId: '', currencyId: '', isExport: false, isActive: true });
-
-function BrandSearch({ onOpen, onClose }) {
-  const [search, setSearch] = useState('');
-  const [rows, setRows] = useState(null);
-  const [error, setError] = useState('');
-  const box = useRef(null);
-  useEffect(() => { box.current?.focus(); }, []);
-  useEffect(() => {
-    let stop = false;
-    const t = setTimeout(() => {
-      api(`/brands?${new URLSearchParams(search ? { search } : {})}`)
-        .then(r => { if (!stop) { setRows(r); setError(''); } }).catch(e => { if (!stop) setError(e.message); });
-    }, 250);
-    return () => { stop = true; clearTimeout(t); };
-  }, [search]);
-
-  return (
-    <div className="find-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <section className="find-panel" role="dialog" aria-label="Search brands" onKeyDown={e => { if (e.key === 'Escape') onClose(); }}>
-        <div className="find-head"><h2>Search brands</h2><button type="button" className="tab-x" aria-label="Close" onClick={onClose}>×</button></div>
-        <div className="find-filters" style={{ gridTemplateColumns: '1fr auto' }}>
-          <label className="f"><span>Brand code, brand name or buyer</span>
-            <input ref={box} className="inp" placeholder="Type to search" value={search} onChange={e => setSearch(e.target.value)} />
-          </label>
-          <button type="button" className="tb find-clear" disabled={!search} onClick={() => setSearch('')}>Clear</button>
-        </div>
-        {error && <div className="alert alert-error" role="alert">{error}</div>}
-        <div className="find-list">
-          <table className="og find-table">
-            <thead><tr><th>Brand code</th><th>Brand name</th><th>Buyer</th><th>Currency</th><th className="num">Orders</th><th>Status</th></tr></thead>
-            <tbody>
-              {rows === null && <tr><td colSpan={6} className="empty-row">Loading…</td></tr>}
-              {rows && rows.length === 0 && <tr><td colSpan={6} className="empty-row">{search ? 'No brand matches.' : 'No brands saved yet.'}</td></tr>}
-              {rows && rows.map(r => (
-                <tr key={r.id} className="find-row" tabIndex={0} onClick={() => onOpen(r.id)} onKeyDown={e => { if (e.key === 'Enter') onOpen(r.id); }}>
-                  <td className="order-no">{r.code}</td>
-                  <td>{r.name}{r.isExport && <span className="chip chip-grey" style={{ marginLeft: 6 }}>Export</span>}</td>
-                  <td>{r.buyer || <span className="field-bad">Buyer not set</span>}</td>
-                  <td>{r.currency || '—'}</td>
-                  <td className="num">{r.orders}</td>
-                  <td>{r.isActive ? <span className="chip chip-teal">Active</span> : <span className="chip chip-grey">Inactive</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="hint" style={{ margin: 0 }}>Click a brand or press Enter to open it. Esc closes this panel.</p>
-      </section>
-    </div>
-  );
-}
 
 export default function BrandMaster({ active, session, onGo, request }) {
   const allowed = session?.permissions?.['masters.brand'] || [];
@@ -63,7 +14,10 @@ export default function BrandMaster({ active, session, onGo, request }) {
   const [loadError, setLoadError] = useState('');
   const [saved, setSaved] = useState(null);
   const [form, setForm] = useState(blank());
-  const [findOpen, setFindOpen] = useState(false);
+  const [mode, setMode] = useState('list');          // 'list' = All brands, 'form' = one brand
+  const [listState, setListState] = useState({ search: '', filter: '' });
+  const [listIds, setListIds] = useState([]);
+  const [lastOpened, setLastOpened] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -89,6 +43,13 @@ export default function BrandMaster({ active, session, onGo, request }) {
   function startNew() {
     if (dirty && !window.confirm('Discard the changes on this screen?')) return;
     setSaved(null); setForm(blank()); setError(''); setMessage(''); setDirty(false);
+    setMode('form');
+  }
+  function backToList() {
+    if (dirty && !window.confirm('Discard the changes on this screen and go back to the list?')) return;
+    setLastOpened(saved?.id || null);
+    setSaved(null); setForm(blank()); setError(''); setMessage(''); setDirty(false);
+    setMode('list');
   }
   function load(b) {
     setSaved(b);
@@ -97,8 +58,8 @@ export default function BrandMaster({ active, session, onGo, request }) {
   }
   async function openBrand(id) {
     if (dirty && !window.confirm('Discard the changes on this screen?')) return;
-    setFindOpen(false); setError(''); setMessage('');
-    try { load(await api(`/brands/${id}`)); } catch (e) { setError(e.message); }
+    setError(''); setMessage('');
+    try { load(await api(`/brands/${id}`)); setMode('form'); } catch (e) { setError(e.message); }
   }
   async function save() {
     if (!canSave || busy) return;
@@ -106,7 +67,7 @@ export default function BrandMaster({ active, session, onGo, request }) {
     try {
       const b = saved ? await api(`/brands/${saved.id}`, { method: 'PUT', body: form }) : await api('/brands', { method: 'POST', body: form });
       load(b);
-      setMessage(saved ? `${b.code} saved.` : `Brand ${b.code} created.`);
+      setMessage(saved ? `Brand ${b.code} saved.` : `Brand ${b.code} created.`);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -120,10 +81,10 @@ export default function BrandMaster({ active, session, onGo, request }) {
   }
 
   useEffect(() => {
-    if (!active) return undefined;
+    if (!active || mode !== 'form') return undefined;
     const onKey = (e) => {
       if (e.key === 'F2') { e.preventDefault(); startNew(); }
-      if (e.key === 'F3') { e.preventDefault(); setFindOpen(true); }
+      if (e.key === 'F3') { e.preventDefault(); backToList(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
     };
     window.addEventListener('keydown', onKey);
@@ -133,74 +94,101 @@ export default function BrandMaster({ active, session, onGo, request }) {
   if (loadError) return <div className="screen"><div className="alert alert-error" role="alert">{loadError}</div></div>;
   if (!lookups) return <div className="screen"><p className="hint">Loading…</p></div>;
 
-  const status = saved ? (form.isActive ? ['ACTIVE', 'chip-teal'] : ['INACTIVE', 'chip-grey']) : ['NEW', 'chip-grey'];
+  if (mode === 'list') {
+    return (
+      <>
+        {error && <div className="alert alert-error" role="alert">{error}</div>}
+        <RecordList title="Brands" active={active} state={listState} setState={setListState} highlightId={lastOpened}
+          onNew={allowed.includes('create') ? startNew : null}
+          onOpen={(id, ids) => { setListIds(ids); openBrand(id); }}
+          placeholder="Search brand code, brand name or buyer…"
+          emptyText="No brands yet. Click New to add the first one."
+          fetchRows={({ search }) => api(`/brands?${new URLSearchParams(search ? { search } : {})}`)}
+          columns={[
+            { label: 'Brand code', cls: 'order-no', cell: r => r.code },
+            { label: 'Brand name', cell: r => <>{r.name}{r.isExport && <span className="o-pill no" style={{ marginLeft: 6 }}>Export</span>}</> },
+            { label: 'Buyer', cell: r => r.buyer || <span className="field-bad">Buyer not set</span> },
+            { label: 'Currency', cell: r => r.currency || '—' },
+            { label: 'Orders', num: true, cell: r => r.orders },
+            { label: 'Status', cell: r => <span className={`o-pill ${r.isActive ? 'ok' : 'no'}`}>{r.isActive ? 'Active' : 'Inactive'}</span> }
+          ]} />
+      </>
+    );
+  }
+
+  const at = saved ? listIds.indexOf(saved.id) : -1;
+  const title = saved ? `${saved.code} · ${saved.name}` : 'New brand';
+  const buyer = lookups.buyers.find(b => b.id === form.buyerId);
 
   return (
-    <div className="screen brand-screen">
-      {findOpen && <BrandSearch onOpen={openBrand} onClose={() => setFindOpen(false)} />}
-      <div className="screen-head">
-        <h1 className="screen-title">Brand master{saved && <span className="doc-no">{saved.code}</span>}</h1>
-        <span className={`chip ${status[1]}`}>{status[0]}</span>
-        {dirty && <span className="chip chip-grey">UNSAVED CHANGES</span>}
-        <span className="hint" style={{ marginLeft: 'auto' }}>
-          {saved?.updatedBy ? `Last saved by ${saved.updatedBy} · ${new Date(saved.updatedAt).toLocaleString('en-IN')}` : <>Fields marked <span className="req">*</span> are required</>}
-        </span>
-      </div>
-      <div className="toolbar">
-        <button type="button" className="tb" onClick={startNew}>+ New <kbd className="tb-kbd">F2</kbd></button>
-        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search <kbd className="tb-kbd">F3</kbd></button>
-        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
-      </div>
-      {error && <div className="alert alert-error" role="alert">{error}</div>}
-      {message && <div className="alert alert-success" role="status">{message}</div>}
+    <div className="o-page">
+      <ControlPanel crumbs={[{ label: 'Brands', onClick: backToList }, { label: title }]}
+        pager={at >= 0 ? { index: at, total: listIds.length, onPrev: () => openBrand(listIds[at - 1]), onNext: () => openBrand(listIds[at + 1]) } : null}>
+        <AllButton label="All brands" onClick={backToList} />
+        {saved && allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
+        {dirty && saved && <span className="chip chip-amber">unsaved changes</span>}
+      </ControlPanel>
 
-      <div className="page-cols">
-      <div className="page-main">
-      <section className="panel">
-        <div className="panel-head">Brand details</div>
-        <div className="form-grid party-head">
-          <label className="f" title={codeLocked ? 'This code is already in order numbers, so it can\'t be changed' : '2 to 5 letters or numbers'}>
-            <span>Brand code <span className="req">*</span></span>
-            <input className="inp" value={form.code} maxLength={5} placeholder="e.g. NWA" disabled={codeLocked}
-              onChange={e => set({ code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} />
-            {codeLocked && <span className="field-hint">Locked – used in {saved.orders} order{saved.orders === 1 ? '' : 's'}</span>}
-          </label>
-          <label className="f"><span>Brand name <span className="req">*</span></span>
-            <input className="inp" value={form.name} maxLength={120} onChange={e => set({ name: e.target.value })} />
-          </label>
-          <label className="f"><span>Buyer <span className="req">*</span></span>
-            <select className="inp" value={form.buyerId} onChange={e => pickBuyer(e.target.value)}>
-              <option value="">Select buyer</option>
-              {lookups.buyers.map(b => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
-            </select>
-            <span className="field-hint">{lookups.buyers.length ? ' ' : 'Add the buyer in Party master first'}</span>
-          </label>
-          <label className="f"><span>Currency</span>
-            <select className="inp" value={form.currencyId} onChange={e => set({ currencyId: e.target.value })}>
-              <option value="">Select currency</option>
-              {lookups.currencies.map(c => <option key={c.id} value={c.id}>{c.code} – {c.name}</option>)}
-            </select>
-          </label>
-          <div className="f party-checks-wrap" style={{ gridColumn: 'span 4' }}>
-            <div className="party-checks">
-              <label><input type="checkbox" checked={form.isExport} onChange={e => set({ isExport: e.target.checked })} /> Is export brand</label>
-              {saved && <label title="Inactive brands stay in old orders but can't be picked for new ones"><input type="checkbox" checked={form.isActive} onChange={e => set({ isActive: e.target.checked })} /> Active</label>}
+      <div className="o-form">
+        <div className="o-main">
+          <StatusBar>
+            <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
+          </StatusBar>
+          {error && <div className="alert alert-error" role="alert">{error}</div>}
+          {message && (
+            <div className="alert alert-success o-saved" role="status">
+              <span>{message}</span>
+              <button type="button" className="tb" onClick={backToList}>See it in All brands</button>
+              {allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>Add another brand</button>}
             </div>
-          </div>
+          )}
+
+          <section className="o-sheet">
+            <SmartButtons items={saved ? [
+              ...(buyer ? [{ icon: '◆', value: buyer.code, label: 'Buyer', onClick: () => onGo('party', { partyId: Number(form.buyerId) }) }] : []),
+              ...(links ? [
+                { icon: '▤', value: links.orders, label: 'Orders' },
+                { icon: '≡', value: links.orderLines, label: 'Order lines' },
+                { icon: '#', value: links.qty ? links.qty.toLocaleString('en-IN') : 0, label: 'Total pcs' }
+              ] : [])
+            ] : []} />
+            <div className="o-title"><span>Brand{saved && !form.isActive ? ' · inactive' : ''}</span><h1>{title}</h1></div>
+            <div className="o-groups">
+              <div>
+                <Field label="Brand code" req title={codeLocked ? 'This code is already in order numbers, so it can\'t be changed' : '2 to 5 letters or numbers'}>
+                  {codeLocked
+                    ? <span>{form.code} <span className="hint">· locked, used in {saved.orders} order{saved.orders === 1 ? '' : 's'}</span></span>
+                    : <input aria-label="Brand code" className="inp" value={form.code} maxLength={5} placeholder="e.g. NWA" onChange={e => set({ code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} />}
+                </Field>
+                <Field label="Brand name" req>
+                  <input aria-label="Brand name" className="inp" value={form.name} maxLength={120} onChange={e => set({ name: e.target.value })} />
+                </Field>
+                <Field label="Buyer" req title={lookups.buyers.length ? undefined : 'Add the buyer in Party master first'}>
+                  <select aria-label="Buyer" className="inp" value={form.buyerId} onChange={e => pickBuyer(e.target.value)}>
+                    <option value="">{lookups.buyers.length ? 'Select buyer' : 'Add the buyer in Party master first'}</option>
+                    {lookups.buyers.map(b => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
+                  </select>
+                </Field>
+              </div>
+              <div>
+                <Field label="Currency">
+                  <select aria-label="Currency" className="inp" value={form.currencyId} onChange={e => set({ currencyId: e.target.value })}>
+                    <option value="">Select currency</option>
+                    {lookups.currencies.map(c => <option key={c.id} value={c.id}>{c.code} – {c.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Options">
+                  <div className="o-checks">
+                    <label><input type="checkbox" checked={form.isExport} onChange={e => set({ isExport: e.target.checked })} /> Is export brand</label>
+                    {saved && <label title="Inactive brands stay in old orders but can't be picked for new ones"><input type="checkbox" checked={form.isActive} onChange={e => set({ isActive: e.target.checked })} /> Active</label>}
+                  </div>
+                </Field>
+                <Field label="Last saved">{saved?.updatedBy ? `${saved.updatedBy} · ${new Date(saved.updatedAt).toLocaleString('en-IN')}` : 'Not saved yet'}</Field>
+              </div>
+            </div>
+          </section>
         </div>
-      </section>
-      </div>
-      {saved && (
-        <SidePanel entity="brands" entityId={saved.id} refreshKey={saved}
-          linked={[
-            ...(form.buyerId ? [{ label: 'Buyer', value: lookups.buyers.find(b => b.id === form.buyerId)?.name || '—', tone: 'ok', onClick: () => onGo('party', { partyId: Number(form.buyerId) }) }] : []),
-            ...(links ? [
-              { label: 'Orders', value: links.orders || '—' },
-              { label: 'Order lines', value: links.orderLines || '—' },
-              { label: 'Total qty', value: links.qty ? `${links.qty.toLocaleString('en-IN')} pcs` : '—' }
-            ] : [])
-          ]} />
-      )}
+        <Chatter entity="brands" entityId={saved?.id} refreshKey={saved} />
       </div>
     </div>
   );

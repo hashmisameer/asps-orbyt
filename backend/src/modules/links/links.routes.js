@@ -37,3 +37,13 @@ linksRouter.get('/history/:entity/:id', asyncHandler(async (req, res, next) => {
     try { res.json(await links.history(req.user.companyId, req.params.entity, idParam(req.params.id))); } catch (e) { next(e); }
   });
 }));
+
+// Log note on a record (anyone who can open that screen)
+linksRouter.post('/notes/:entity/:id', asyncHandler(async (req, res, next) => {
+  const feature = links.HISTORY_FEATURE[req.params.entity];
+  if (!feature) throw new AppError(404, 'Not found.');
+  return canView(feature)(req, res, async (err) => {
+    if (err) return next(err);
+    try { res.status(201).json(await links.addNote(req.user, req.params.entity, idParam(req.params.id), (req.body || {}).body)); } catch (e) { next(e); }
+  });
+}));

@@ -57,7 +57,7 @@ function BrandSearch({ onOpen, onClose }) {
   );
 }
 
-export default function BrandMaster({ active, session, onGo }) {
+export default function BrandMaster({ active, session, onGo, request }) {
   const allowed = session?.permissions?.['masters.brand'] || [];
   const [lookups, setLookups] = useState(null);
   const [loadError, setLoadError] = useState('');
@@ -70,6 +70,8 @@ export default function BrandMaster({ active, session, onGo }) {
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => { api('/brands/lookups').then(setLookups).catch(e => setLoadError(e.message)); }, []);
+  // Opened from another screen (e.g. the Brand field of an order)
+  useEffect(() => { if (request?.brandId) openBrand(request.brandId); }, [request?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Orders of this brand (right-hand panel)
   const [links, setLinks] = useState(null);

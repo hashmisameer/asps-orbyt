@@ -103,7 +103,7 @@ function words(entity, action, d = {}, lineNos = {}) {
   return action.toLowerCase().replace(/_/g, ' ');
 }
 
-export async function history(companyId, entity, entityId, limit = 8) {
+export async function history(companyId, entity, entityId, limit = 30) {
   if (!HISTORY_FEATURE[entity]) throw new AppError(404, 'Not found.');
   const rows = await query(
     `SELECT a.action, a.details, a.created_at, u.full_name, u.username
@@ -118,5 +118,24 @@ export async function history(companyId, entity, entityId, limit = 8) {
       lineNos = Object.fromEntries((await query('SELECT id, line_no FROM order_lines WHERE id = ANY($1::bigint[])', [ids])).map(r => [r.id, r.line_no]));
     }
   }
-  return rows.map(r => ({ who: r.username || r.full_name || 'system', at: r.created_at, text: words(entity, r.action, r.details || {}, lineNos) }));
+  const changes = rows.map(r => ({ kind: 'change', who: r.username || r.full_name || 'system', at: r.created_at, text: words(entity, r.action, r.details || {}, lineNos) }));
+  // Notes written on the record, mixed in by time
+  const notes = (await query(
+    `SELECT n.id, n.body, n.created_at, u.username, u.full_name
+       FROM notes n JOIN users u ON u.id = n.user_id
+      WHERE n.company_id = $1 AND n.entity = $2 AND n.entity_id = $3
+      ORDER BY n.created_at DESC LIMIT $4`, [companyId, entity, Number(entityId), limit]))
+    .map(n => ({ kind: 'note', id: n.id, who: n.username || n.full_name, at: n.created_at, text: n.body }));
+  return [...notes, ...changes].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, limit);
+}
+
+// A note written in the chatter ("Log note")
+export async function addNote(user, entity, entityId, body) {
+  if (!HISTORY_FEATURE[entity]) throw new AppError(404, 'Not found.');
+  const text = String(body || '').trim();
+  if (!text) throw new AppError(400, 'Write the note first.');
+  if (text.length > 2000) throw new AppError(400, 'A note can have up to 2000 characters.');
+  await query('INSERT INTO notes (company_id, entity, entity_id, user_id, body) VALUES ($1, $2, $3, $4, $5)',
+    [user.companyId, entity, Number(entityId), user.id, text]);
+  return history(user.companyId, entity, entityId);
 }

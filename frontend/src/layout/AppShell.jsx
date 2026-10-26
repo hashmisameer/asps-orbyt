@@ -23,7 +23,7 @@ const SCREENS = {
 };
 
 const Icon = {
-  menu: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>,
+  menu: <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="5" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="19" cy="5" r="2" /><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /><circle cx="5" cy="19" r="2" /><circle cx="12" cy="19" r="2" /><circle cx="19" cy="19" r="2" /></svg>,
   close: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>,
   star: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z" /></svg>,
   approvals: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M6 3h12M6 21h12M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9s10 4 10 9" /></svg>,
@@ -34,6 +34,30 @@ const Icon = {
   bell: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4z" /><path d="M10 21h4" /></svg>,
   power: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M12 3v9M6.3 6.3a8 8 0 1011.4 0" /></svg>
 };
+
+// Screens built with the record layout (list -> form, chatter on the right) fill the page edge to edge
+const FLUSH_SCREENS = ['orderEntry'];
+const TILE_COLOURS = ['#0F766E', '#1D4ED8', '#B45309', '#7C3AED', '#BE123C', '#047857', '#0369A1', '#4D7C0F'];
+
+// App icons on Home (Odoo-style launcher): one picture and colour per module
+const P = (d) => <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
+const MOD_ICONS = {
+  masters: ['#0F766E', '#14B8A6', P(<><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></>)],
+  order: ['#1D4ED8', '#60A5FA', P(<><path d="M6 3h9l4 4v14H6z" /><path d="M14 3v5h5M9 13h7M9 17h5" /></>)],
+  purchase: ['#B45309', '#F59E0B', P(<><path d="M3 4h2l2.4 11h10.2L20 7H6.2" /><circle cx="9" cy="19" r="1.5" /><circle cx="17" cy="19" r="1.5" /></>)],
+  inventory: ['#7C3AED', '#A78BFA', P(<><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" /><path d="M4 7.5l8 4.5 8-4.5M12 12v9" /></>)],
+  production: ['#BE123C', '#FB7185', P(<><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.9 4.9L7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1" /></>)],
+  finance: ['#047857', '#34D399', P(<><rect x="3" y="6" width="18" height="13" rx="2" /><path d="M3 10h18M7 15h3" /></>)],
+  admin: ['#334155', '#94A3B8', P(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></>)],
+  cutting: ['#0369A1', '#38BDF8', P(<><circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12" /></>)],
+  stitching: ['#9D174D', '#F472B6', P(<><path d="M4 20L20 4" /><circle cx="18" cy="6" r="1.5" /><path d="M6 10c2 0 2 4 4 4s2-4 4-4" /></>)],
+  finishing: ['#4D7C0F', '#A3E635', P(<><path d="M8 3l-5 4 3 3 2-1v12h8V9l2 1 3-3-5-4c-1 2-2.5 3-4 3S9 5 8 3z" /></>)],
+  sampling: ['#C2410C', '#FB923C', P(<><path d="M9 3h6M10 3v6L4.5 18.5A2 2 0 006.2 21h11.6a2 2 0 001.7-2.5L14 9V3" /><path d="M7 15h10" /></>)],
+  jobwork: ['#0E7490', '#22D3EE', P(<><path d="M17 3l4 4-4 4M21 7H9M7 21l-4-4 4-4M3 17h12" /></>)],
+  export: ['#1E40AF', '#818CF8', P(<><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" /></>)],
+  reports: ['#6D28D9', '#C084FC', P(<><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>)]
+};
+const modIcon = (code, i) => MOD_ICONS[code] || [TILE_COLOURS[i % TILE_COLOURS.length], TILE_COLOURS[(i + 3) % TILE_COLOURS.length], null];
 
 const fmtDate = (iso) => (iso ? iso.split('-').reverse().join('-') : '');
 
@@ -51,6 +75,8 @@ export default function AppShell({ session, onLogout }) {
   const [q, setQ] = useState('');                   // text in the command box
   const [sel, setSel] = useState(0);                // highlighted result in the command box
   const [userMenu, setUserMenu] = useState(false);
+  const [navDrop, setNavDrop] = useState('');
+  const [homeQ, setHomeQ] = useState('');           // search on Home       // group of the current module whose screens are dropped down
   const [pwOpen, setPwOpen] = useState(false);
   const [tabs, setTabs] = useState([]);             // open screens, e.g. ['orderEntry']
   const [active, setActive] = useState('home');     // 'home' or a screen id
@@ -98,7 +124,7 @@ export default function AppShell({ session, onLogout }) {
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setMenuOpen(false); setOpenList(false); setPaletteOpen(true); }
-      if (e.key === 'Escape') { setMenuOpen(false); setOpenList(false); setUserMenu(false); }
+      if (e.key === 'Escape') { setMenuOpen(false); setOpenList(false); setUserMenu(false); setNavDrop(''); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -106,7 +132,7 @@ export default function AppShell({ session, onLogout }) {
   useEffect(() => { if (!paletteOpen) { setQ(''); setSel(0); } }, [paletteOpen]);
   useEffect(() => { setSel(0); }, [q]);
 
-  function closeAll() { setMenuOpen(false); setOpenList(false); setPaletteOpen(false); setUserMenu(false); }
+  function closeAll() { setMenuOpen(false); setOpenList(false); setPaletteOpen(false); setUserMenu(false); setNavDrop(''); }
   function switchTo(id) { closeAll(); setActive(id); }
   function openScreen(item) {
     closeAll();
@@ -136,62 +162,88 @@ export default function AppShell({ session, onLogout }) {
   const panelMod = menu.find(m => m.code === menuMod) || menu.find(m => m.code === activeMod) || menu[0];
   const menuWords = menuQ.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const menuFound = menuWords.length ? allItems.filter(i => menuWords.every(w => `${i.name} ${i.where}`.toLowerCase().includes(w))) : [];
-  const crumb = active === 'home' ? 'Home' : SCREENS[active]?.crumb || '';
+  // Top bar: the module of the screen on view, with its groups as drop-downs (like Orders / Costing / Reports)
+  const navMod = menu.find(m => m.code === activeMod);
+  // Module tiles on Home: open the module's first built screen, or show its screens in the Menu panel
+  function openModule(m) {
+    const first = m.groups.flatMap(g => g.items).find(i => READY_SCREENS[i.code]);
+    if (first) openScreen(first); else { closeAll(); setMenuQ(''); setMenuMod(m.code); setMenuOpen(true); }
+  }
+  const flush = active === 'home' || FLUSH_SCREENS.includes(active);
 
   return (
     <div className="shell">
-      <header className="appbar">
-        <button type="button" className="appbar-logo" onClick={() => switchTo('home')} aria-label="Home">
-          <OrbitMark width={26} /><span>orbyt</span>
+      <header className="appbar o-nav">
+        <button type="button" className={`o-apps ${menuOpen ? 'open' : ''}`} aria-expanded={menuOpen} aria-label="Menu: all modules and screens" title="Menu"
+          onClick={() => { setOpenList(false); setUserMenu(false); setNavDrop(''); setMenuQ(''); setMenuMod(null); setMenuOpen(o => !o); }}>
+          {menuOpen ? Icon.close : Icon.menu}
         </button>
-        <button type="button" className={`appbar-menu ${menuOpen ? 'open' : ''}`} aria-expanded={menuOpen}
-          onClick={() => { setOpenList(false); setUserMenu(false); setMenuQ(''); setMenuMod(null); setMenuOpen(o => !o); }}>
-          {menuOpen ? Icon.close : Icon.menu}<span>Menu</span>
+        <button type="button" className="o-brand" onClick={() => switchTo('home')} aria-label="Home">
+          <OrbitMark width={22} /><span>orbyt</span>{navMod && <b>· {navMod.name}</b>}
         </button>
-        <span className="appbar-crumb" title={crumb}>{crumb}</span>
+        {navMod && (
+          <nav className="o-navgroups" aria-label={navMod.name}>
+            {navMod.groups.map(g => {
+              const on = g.items.some(i => READY_SCREENS[i.code] === active);
+              return (
+                <div key={g.title} className="o-navg">
+                  <button type="button" className={`${on ? 'on' : ''} ${navDrop === g.title ? 'open' : ''}`} aria-expanded={navDrop === g.title}
+                    onClick={() => { setMenuOpen(false); setOpenList(false); setUserMenu(false); setNavDrop(d => (d === g.title ? '' : g.title)); }}>{g.title}</button>
+                  {navDrop === g.title && (
+                    <div className="pop-panel o-navdrop" role="menu">
+                      {g.items.map(item => (
+                        <button key={item.code} type="button" role="menuitem" className={`mod-drop-link ${READY_SCREENS[item.code] === active ? 'cur' : ''}`} onClick={() => openScreen(item)}>
+                          {item.name}{!READY_SCREENS[item.code] && <span className="soon">soon</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+        )}
 
-        <button type="button" className="appbar-cmd" onClick={() => { closeAll(); setPaletteOpen(true); }}>
-          {Icon.search}<span>Jump to a screen…</span><kbd>Ctrl K</kbd>
-        </button>
+        <div className="o-nav-right">
+          <button type="button" className="o-navbtn o-jump" onClick={() => { closeAll(); setPaletteOpen(true); }} title="Jump to a screen (Ctrl K)">
+            {Icon.search}<span>Jump to…</span><kbd>Ctrl K</kbd>
+          </button>
 
-        {tabs.length > 0 && (
+          {tabs.length > 0 && (
+            <div className="appbar-pop">
+              <button type="button" className="o-navbtn" aria-expanded={openList} onClick={() => { setMenuOpen(false); setUserMenu(false); setNavDrop(''); setOpenList(o => !o); }}>
+                <b>{tabs.length}</b> open
+              </button>
+              {openList && (
+                <div className="pop-panel open-panel" role="menu">
+                  <div className="pop-head">Open screens</div>
+                  {tabs.map(id => (
+                    <div key={id} className={`open-row ${active === id ? 'on' : ''}`}>
+                      <button type="button" role="menuitem" onClick={() => switchTo(id)}>{SCREENS[id].title}<small>{SCREENS[id].crumb}</small></button>
+                      <button type="button" className="tab-x" aria-label={`Close ${SCREENS[id].title}`} onClick={() => closeTab(id)}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {quickLinks.map(t => <button key={t.code} type="button" className="o-navbtn o-navicon" title={t.label} aria-label={t.label}>{t.icon}</button>)}
+
           <div className="appbar-pop">
-            <button type="button" className="appbar-open" aria-expanded={openList} onClick={() => { setMenuOpen(false); setUserMenu(false); setOpenList(o => !o); }}>
-              <b>{tabs.length}</b> open
+            <button type="button" className="o-me" aria-haspopup="menu" aria-expanded={userMenu} aria-label={`Account: ${user.username}`}
+              onClick={() => { setMenuOpen(false); setOpenList(false); setNavDrop(''); setUserMenu(o => !o); }}>
+              <span className="o-co">{company.name}{place && <> · {place}</>}</span>
+              <span className="o-av">{initials(user.fullName)}</span>
             </button>
-            {openList && (
-              <div className="pop-panel open-panel" role="menu">
-                <div className="pop-head">Open screens</div>
-                {tabs.map(id => (
-                  <div key={id} className={`open-row ${active === id ? 'on' : ''}`}>
-                    <button type="button" role="menuitem" onClick={() => switchTo(id)}>{SCREENS[id].title}<small>{SCREENS[id].crumb}</small></button>
-                    <button type="button" className="tab-x" aria-label={`Close ${SCREENS[id].title}`} onClick={() => closeTab(id)}>×</button>
-                  </div>
-                ))}
+            {userMenu && (
+              <div className="pop-panel user-panel" role="menu">
+                <div className="user-menu-head"><b>{user.fullName}</b><span>{user.username} · {user.role}</span><span className="um-co">{company.name}<br />{place}</span></div>
+                <button type="button" role="menuitem" onClick={() => { setUserMenu(false); setPwOpen(true); }}>Change password</button>
+                <button type="button" role="menuitem" className="danger" onClick={() => { setUserMenu(false); onLogout(); }}>Log out</button>
               </div>
             )}
           </div>
-        )}
-
-        {quickLinks.length > 0 && (
-          <div className="appbar-tools">
-            {quickLinks.map(t => <button key={t.code} type="button" className="icon-btn" title={t.label} aria-label={t.label}>{t.icon}</button>)}
-          </div>
-        )}
-
-        <div className="appbar-pop">
-          <button type="button" className="appbar-me" aria-haspopup="menu" aria-expanded={userMenu} aria-label={`Account: ${user.username}`}
-            onClick={() => { setMenuOpen(false); setOpenList(false); setUserMenu(o => !o); }}>
-            <span className="appbar-co"><b>{company.name}</b><span>{place}</span></span>
-            <span className="avatar">{initials(user.fullName)}</span>
-          </button>
-          {userMenu && (
-            <div className="pop-panel user-panel" role="menu">
-              <div className="user-menu-head"><b>{user.fullName}</b><span>{user.username} · {user.role}</span><span className="um-co">{company.name}<br />{place}</span></div>
-              <button type="button" role="menuitem" onClick={() => { setUserMenu(false); setPwOpen(true); }}>Change password</button>
-              <button type="button" role="menuitem" className="danger" onClick={() => { setUserMenu(false); onLogout(); }}>Log out</button>
-            </div>
-          )}
         </div>
       </header>
 
@@ -245,7 +297,7 @@ export default function AppShell({ session, onLogout }) {
           </section>
         </>
       )}
-      {(openList || userMenu) && <div className="drop-dim clear" onMouseDown={() => { setOpenList(false); setUserMenu(false); }} />}
+      {(openList || userMenu || navDrop) && <div className="drop-dim clear" onMouseDown={() => { setOpenList(false); setUserMenu(false); setNavDrop(''); }} />}
 
       {/* Command box */}
       {paletteOpen && (
@@ -273,7 +325,7 @@ export default function AppShell({ session, onLogout }) {
         </div>
       )}
 
-      <main className="workspace">
+      <main className={`workspace ${flush ? 'flush' : ''}`}>
         {licence?.expired && (
           <div className="alert alert-error" role="alert">Your ORBYT licence ended on {fmtDate(licence.validTill)}. You can view data, but saving is paused. Contact ORBYT support to renew.</div>
         )}
@@ -283,27 +335,50 @@ export default function AppShell({ session, onLogout }) {
         {notice && <div className="alert alert-info" role="status">{notice}</div>}
         {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} onDone={() => { setPwOpen(false); setNotice('Your password has been changed. Use the new one next time you sign in.'); }} />}
 
-        {active === 'home' && (
-          <div className="home">
-            {tabs.length > 0 && (
-              <section className="home-box">
-                <h2>Open now</h2>
-                <div className="home-grid">
-                  {tabs.map(id => <button key={id} type="button" onClick={() => switchTo(id)}>{SCREENS[id].title}<small>{SCREENS[id].crumb}</small></button>)}
+        {active === 'home' && (() => {
+          const hw = homeQ.trim().toLowerCase().split(/\s+/).filter(Boolean);
+          const found = hw.length ? allItems.filter(i => hw.every(w => `${i.name} ${i.where}`.toLowerCase().includes(w))) : [];
+          return (
+            <div className="o-home">
+              <label className="o-home-search">
+                {Icon.search}<span className="sr-only">Search menus</span>
+                <input type="search" placeholder="Search menus…" value={homeQ} onChange={e => setHomeQ(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && found[0]) { setHomeQ(''); openScreen(found[0]); } if (e.key === 'Escape') setHomeQ(''); }} />
+              </label>
+              {hw.length > 0 ? (
+                <div className="o-home-found">
+                  {found.length === 0 && <p>No screen matches "{homeQ}".</p>}
+                  {found.slice(0, 12).map(i => (
+                    <button key={i.code} type="button" onClick={() => { setHomeQ(''); openScreen(i); }}>
+                      <span>{i.name}<small>{i.where}</small></span>{!READY_SCREENS[i.code] && <span className="soon">soon</span>}
+                    </button>
+                  ))}
                 </div>
-              </section>
-            )}
-            <section className="home-box">
-              <h2>Start something</h2>
-              <div className="home-grid">
-                {allItems.filter(i => READY_SCREENS[i.code]).map(i => (
-                  <button key={i.code} type="button" onClick={() => openScreen(i)}>{i.name}<small>{i.where}</small></button>
-                ))}
-              </div>
-              <p className="hint" style={{ margin: '12px 0 0' }}>Tip: press <kbd>Ctrl K</kbd> anywhere and type a screen name.</p>
-            </section>
-          </div>
-        )}
+              ) : (
+                <>
+                  <section className="o-apps-grid" aria-label="Modules">
+                    {menu.map((m, i) => {
+                      const [c1, c2, pic] = modIcon(m.code, i);
+                      const ready = m.groups.some(g => g.items.some(it => READY_SCREENS[it.code]));
+                      return (
+                        <button key={m.code} type="button" className="o-app" onClick={() => openModule(m)} title={ready ? `Open ${m.name}` : `${m.name} · coming soon`}>
+                          <span className="o-app-ic" style={{ background: `linear-gradient(145deg, ${c2}, ${c1})` }} aria-hidden="true">{pic || m.name[0]}</span>
+                          <span className="o-app-name">{m.name}</span>
+                        </button>
+                      );
+                    })}
+                  </section>
+                  {tabs.length > 0 && (
+                    <div className="o-home-open">
+                      <span>Open now</span>
+                      {tabs.map(id => <button key={id} type="button" onClick={() => switchTo(id)}>{SCREENS[id].title}</button>)}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Open screens stay mounted so unsaved work is kept when switching */}
         {tabs.map(id => {

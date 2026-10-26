@@ -2,12 +2,13 @@
 // Header: brand, product category, style, allowed deviation.
 // Lines: one row per order no., with dispatch mode, buyer PO, colour, size range, size-wise qty and dates.
 // After saving, only buyer PO no., size range and quantities can change.
-import FlowStrip, { daysTo } from '../components/FlowStrip.jsx';
-import SidePanel from '../components/SidePanel.jsx';
+import { daysTo } from '../components/FlowStrip.jsx';
+import { ControlPanel, StatusBar, SmartButtons } from '../components/RecordBar.jsx';
+import Chatter from '../components/Chatter.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import DateInput from '../components/DateInput.jsx';
-import FindOrders from './FindOrders.jsx';
+import OrderList from './OrderList.jsx';
 
 let keySeq = 0;
 const newKey = () => `n${++keySeq}`;
@@ -43,28 +44,21 @@ const fromServer = (l) => ({
 
 const blankHeader = () => ({ brandId: '', productCategoryId: '', styleId: '', styleText: '', deviation: '2', remarks: '' });
 
-// Flow of a whole order: costing and BOM counted over its lines
-function orderSteps(flow, go) {
-  const n = flow.lines.length;
-  const finals = flow.lines.filter(l => l.costing && l.costing.type !== 'initial');
-  const approved = flow.lines.filter(l => l.bom?.status === 'approved');
-  const firstNoCost = flow.lines.find(l => !(l.costing && l.costing.type !== 'initial'));
-  const firstNoBom = flow.lines.find(l => l.costing && l.costing.type !== 'initial' && l.bom?.status !== 'approved');
-  const of = (k) => (n === 1 ? '' : `${k} of ${n} lines · `);
-  return [
-    { title: 'Order', state: 'done', sub: `${n} line${n === 1 ? '' : 's'} saved` },
-    finals.length === n
-      ? { title: 'Costing', state: 'done', sub: n === 1 ? finals[0].costing.costingNo : `All ${n} lines Final` }
-      : { title: 'Costing', state: 'todo', sub: `${of(finals.length)}No Final costing`.replace(' · No Final costing', ' Final'),
-        action: { label: firstNoCost.costing ? 'Open' : 'Create', onClick: () => go('costing', firstNoCost.costing ? { costingId: firstNoCost.costing.id } : { newForLine: firstNoCost.id }) } },
-    approved.length === n
-      ? { title: 'BOM', state: 'done', sub: n === 1 ? 'Approved' : `All ${n} lines approved` }
-      : firstNoBom
-        ? { title: 'BOM', state: 'todo', sub: `${of(approved.length)}${firstNoBom.bom ? 'Draft' : 'Not made'}`.replace(/ · (Draft|Not made)$/, ' approved'),
-          action: { label: firstNoBom.bom ? 'Open' : 'Create', onClick: () => go('bom', { orderLineId: firstNoBom.id }) } }
-        : { title: 'BOM', state: 'wait', sub: 'After Final costing' },
-    { title: 'Purchase', state: 'wait', sub: approved.length ? 'Comes with the Purchase module' : 'After BOM approval' }
-  ];
+// Where the whole order stands, counted over its lines
+function orderState(flow) {
+  const ls = flow?.lines || [];
+  const n = ls.length;
+  const isFinal = (l) => l.costing && l.costing.type !== 'initial';
+  const finals = ls.filter(isFinal).length;
+  const approved = ls.filter(l => l.bom?.status === 'approved').length;
+  const firstNoCost = ls.find(l => !isFinal(l));
+  const firstNoBom = ls.find(l => isFinal(l) && l.bom?.status !== 'approved');
+  return { n, finals, approved, firstNoCost, firstNoBom };
+}
+function stages(order, st) {
+  const names = ['Draft', 'Saved', 'Costing final', 'BOM approved', 'Purchase'];
+  const at = !order ? 0 : st.finals < st.n ? 1 : st.approved < st.n ? 2 : 3;
+  return names.map((label, i) => ({ label, state: i < at ? 'done' : i === at ? 'on' : '' }));
 }
 
 // Nearest ex-factory date whose BOM is not approved yet
@@ -90,7 +84,10 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   const [serverError, setServerError] = useState('');
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
-  const [findOpen, setFindOpen] = useState(false);
+  const [mode, setMode] = useState('list');         // 'list' = Orders list, 'form' = one order
+  const [listIds, setListIds] = useState([]);       // order of the list, for ‹ › on the form
+  const [listState, setListState] = useState({ search: '', view: '', group: true });
+  const [tab, setTab] = useState('lines');
   const [focusKey, setFocusKey] = useState(null);   // new line to put the cursor in
   const [flow, setFlow] = useState(null);           // costing / BOM state of the saved lines
 
@@ -259,25 +256,31 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
       loadSaved(saved);
       setHeader(blankHeader());
       setTried(false); setProblems([]); setServerError(''); setMessage('');
-      setFindOpen(false);
+      setMode('form');
     } catch (e) {
       setServerError(e.message);
-      setFindOpen(false);
     }
+  }
+  function backToList() {
+    if (isDirty && !window.confirm('Discard the changes on this screen and go back to the list?')) return;
+    setOrder(null); setHeader(blankHeader()); setLines([blankLine()]);
+    setTried(false); setProblems([]); setServerError(''); setMessage('');
+    setMode('list');
   }
 
   function startNew() {
     if (isDirty && !window.confirm('Discard the changes on this screen and start a new order?')) return;
     setOrder(null); setHeader(blankHeader()); setLines([blankLine()]);
     setTried(false); setProblems([]); setServerError(''); setMessage('');
+    setTab('lines'); setMode('form');
   }
 
-  // Keyboard: F2 = new, F3 = search, Ctrl+S = save (only while this tab is on screen)
+  // Keyboard on the form: F2 = new, F3 = back to the list to search, Ctrl+S = save (only while this tab is on screen)
   useEffect(() => {
-    if (!active) return undefined;
+    if (!active || mode !== 'form') return undefined;
     const onKey = (e) => {
       if (e.key === 'F2') { e.preventDefault(); startNew(); }
-      if (e.key === 'F3') { e.preventDefault(); setFindOpen(true); }
+      if (e.key === 'F3') { e.preventDefault(); backToList(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
     };
     window.addEventListener('keydown', onKey);
@@ -287,202 +290,264 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   if (loadError) return <div className="alert alert-error" role="alert">Couldn't load the order screen: {loadError}</div>;
   if (!lookups) return <div className="hint" style={{ padding: 8 }}>Loading order screen…</div>;
 
-  const status = !order ? ['DRAFT · NOT SAVED', 'chip-grey'] : (hasChanges ? ['SAVED · CHANGES PENDING', 'chip-amber'] : ['SAVED', 'chip-teal']);
   const brandName = (id) => lookups.brands.find(b => String(b.id) === String(id))?.name || '';
   const categoryName = (id) => lookups.productCategories.find(c => String(c.id) === String(id))?.name || '';
   let previewIndex = 0;
 
+  if (mode === 'list') {
+    return (
+      <>
+        {serverError && <div className="alert alert-error" role="alert">{serverError}</div>}
+        <OrderList active={active} state={listState} setState={setListState}
+          onNew={startNew} onOpen={(id, ids) => { setListIds(ids); setTab('lines'); openOrder(id); }} />
+      </>
+    );
+  }
+
+  const st = orderState(flow);
+  const warn = order && flow ? orderWarn(flow) : '';
+  const at = order ? listIds.indexOf(order.id) : -1;
+  const title = order ? (order.lines.length > 1 ? `${order.lines[0].orderNo} – ${order.lines[order.lines.length - 1].orderNo.split('/').pop()}` : order.lines[0]?.orderNo) : 'New order';
+  const openCosting = (l) => onGo('costing', l.costing ? { costingId: l.costing.id } : { newForLine: l.id });
+  const smart = order && flow ? [
+    { icon: '₹', value: `${st.finals} / ${st.n}`, label: 'Final costing', tone: st.finals < st.n ? 'warn' : 'ok',
+      onClick: () => openCosting(st.firstNoCost || flow.lines[0]) },
+    { icon: '≡', value: `${st.approved} / ${st.n}`, label: 'BOM approved', tone: st.approved < st.n ? 'warn' : 'ok',
+      onClick: () => onGo('bom', { orderLineId: (st.firstNoBom || flow.lines[0]).id }) },
+    { icon: '↓', value: '—', label: 'Purchase' },
+    { icon: '▤', value: st.n, label: st.n === 1 ? 'Line' : 'Lines', onClick: () => setTab('lines') }
+  ] : [];
+  const cell = (label, value, opts = {}) => (
+    <div className={`o-row ${opts.wide ? 'wide' : ''}`} title={opts.title}>
+      <span className="o-lbl">{label}{opts.req && !order && <span className="req"> *</span>}</span>
+      <div className="o-val">{value}</div>
+    </div>
+  );
+
   return (
-    <div className="screen">
-      {findOpen && <FindOrders lookups={lookups} onOpen={openOrder} onClose={() => setFindOpen(false)} />}
-      <div className="screen-head">
-        <h1 className="screen-title">Order entry</h1>
-        <span className={`chip ${status[1]}`}>{status[0]}</span>
-        <span className="hint" style={{ marginLeft: 'auto' }}>Fields marked <span className="req">*</span> are required</span>
-      </div>
+    <div className="o-page">
+      <ControlPanel
+        crumbs={[{ label: 'Orders', onClick: backToList }, { label: title }]}
+        pager={at >= 0 ? { index: at, total: listIds.length, onPrev: () => openOrder(listIds[at - 1]), onNext: () => openOrder(listIds[at + 1]) } : null}>
+        {order && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
+        {order && hasChanges && <span className="chip chip-amber">unsaved changes</span>}
+      </ControlPanel>
 
-      <div className="toolbar">
-        <button type="button" className="tb" onClick={startNew}>+ New <kbd className="tb-kbd">F2</kbd></button>
-        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search <kbd className="tb-kbd">F3</kbd></button>
-        <button type="button" className="tb tb-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
-        {(has('order.entry.print') || has('order.entry.import_excel')) && <span className="tb-sep" aria-hidden="true" />}
-        {has('order.entry.print') && <button type="button" className="tb tb-soon" title="Coming in a later phase" onClick={() => onNotice('Print is coming in a later phase.')}>Print</button>}
-        {has('order.entry.import_excel') && <button type="button" className="tb tb-soon" title="Coming in a later phase" onClick={() => onNotice('Excel import is coming in a later phase.')}>Import lines from Excel</button>}
-        {has('order.entry.audit') && <button type="button" className="tb tb-soon" title="Coming in a later phase" style={{ marginLeft: 'auto' }} onClick={() => onNotice('Audit trail screen is coming in a later phase.')}>Audit trail</button>}
-      </div>
-
-      {message && <div className="alert alert-success" role="status">{message}</div>}
-      {serverError && <div className="alert alert-error" role="alert">{serverError}</div>}
-      {tried && liveProblems.length > 0 && (
-        <div className="alert alert-error" role="alert">Fix before saving · {liveProblems.join(' · ')}</div>
-      )}
-
-      {order && flow && <FlowStrip steps={orderSteps(flow, onGo)} warn={orderWarn(flow)} />}
-
-      <div className="page-cols">
-      <div className="page-main">
-      <section className="panel">
-        <div className="panel-head">Order header</div>
-        <div className="form-grid">
-          <label className="f" title="The brand initials go into each order no."><span>Brand <span className="req">*</span></span>
-            {order ? <span className="ro">{order.brandName} ({order.brandInitials})</span> : (
-              <select className={`inp ${tried && !header.brandId ? 'bad' : ''}`} value={header.brandId} onChange={e => setHeader(h => ({ ...h, brandId: e.target.value }))}>
-                <option value="">Select brand</option>
-                {lookups.brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
+      <div className="o-form">
+        <div className="o-main">
+          <StatusBar steps={stages(order, st)}>
+            <button type="button" className="tb tb-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
+            {order && st.firstNoCost && (
+              <button type="button" className="tb tb-line" onClick={() => openCosting(st.firstNoCost)}>{st.firstNoCost.costing ? 'Open costing' : 'Create costing'}</button>
             )}
-          </label>
-          <label className="f"><span>Product category <span className="req">*</span></span>
-            {order ? <span className="ro">{categoryName(order.productCategoryId)}</span> : (
-              <select className={`inp ${tried && !header.productCategoryId ? 'bad' : ''}`} value={header.productCategoryId} onChange={e => setHeader(h => ({ ...h, productCategoryId: e.target.value }))}>
-                <option value="">Select category</option>
-                {lookups.productCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+            {order && !st.firstNoCost && st.firstNoBom && (
+              <button type="button" className="tb tb-line" onClick={() => onGo('bom', { orderLineId: st.firstNoBom.id })}>{st.firstNoBom.bom ? 'Open BOM' : 'Create BOM'}</button>
             )}
-          </label>
-          <label className="f span2" title="Styles created on the Style screen show here"><span>Style <span className="req">*</span></span>
-            {order ? <span className="ro">{order.styleCode} · {order.styleName}</span> : (
+            {has('order.entry.print') && <button type="button" className="tb" title="Coming in a later phase" onClick={() => onNotice('Print is coming in a later phase.')}>Print</button>}
+            {has('order.entry.import_excel') && !order && <button type="button" className="tb" title="Coming in a later phase" onClick={() => onNotice('Excel import is coming in a later phase.')}>Import lines from Excel</button>}
+          </StatusBar>
+
+          {message && <div className="alert alert-success" role="status">{message}</div>}
+          {serverError && <div className="alert alert-error" role="alert">{serverError}</div>}
+          {tried && liveProblems.length > 0 && <div className="alert alert-error" role="alert">Fix before saving · {liveProblems.join(' · ')}</div>}
+
+          <section className="o-sheet">
+            <SmartButtons items={smart} />
+            <div className="o-title">
+              <span>Order</span>
+              <h1>{title}</h1>
+              {warn && <p className="o-warn">{warn}</p>}
+            </div>
+
+            <div className="o-groups">
+              <div>
+                {cell('Brand', order ? <button type="button" className="o-link" onClick={() => onGo('brand', { brandId: order.brandId })}>{order.brandName} ({order.brandInitials})</button> : (
+                  <select aria-label="Brand" className={`inp ${tried && !header.brandId ? 'bad' : ''}`} value={header.brandId} onChange={e => setHeader(h => ({ ...h, brandId: e.target.value }))}>
+                    <option value="">Select brand</option>
+                    {lookups.brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                ), { req: true, title: 'The brand initials go into each order no.' })}
+                {cell('Product category', order ? categoryName(order.productCategoryId) : (
+                  <select aria-label="Product category" className={`inp ${tried && !header.productCategoryId ? 'bad' : ''}`} value={header.productCategoryId} onChange={e => setHeader(h => ({ ...h, productCategoryId: e.target.value }))}>
+                    <option value="">Select category</option>
+                    {lookups.productCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                ), { req: true })}
+                {cell('Style', order ? `${order.styleCode} · ${order.styleName}` : (
+                  <>
+                    <input aria-label="Style" className={`inp ${tried && !header.styleId ? 'bad' : ''}`} list="order-styles" placeholder="Type to search style"
+                      value={header.styleText} onChange={e => setStyleText(e.target.value)} />
+                    <datalist id="order-styles">
+                      {stylesForBrand.map(s => <option key={s.id} value={`${s.code} · ${s.name}`} />)}
+                    </datalist>
+                  </>
+                ), { req: true, title: 'Styles created on the Style screen show here' })}
+              </div>
+              <div>
+                {cell('Allowed deviation', order ? (order.allowedDeviation === 'open' ? 'Open (no limit)' : `${order.allowedDeviation}%`) : (
+                  <select aria-label="Allowed deviation" className="inp" value={header.deviation} onChange={e => setHeader(h => ({ ...h, deviation: e.target.value }))}>
+                    <option value="2">2%</option>
+                    <option value="5">5%</option>
+                    <option value="open">Open (no limit)</option>
+                  </select>
+                ), { req: true })}
+                {cell('Total order qty', <b>{fmtNum(grandTotal)} pcs</b>, { title: 'Sum of all order lines, worked out automatically' })}
+                {cell('Max allowed', grandTotal > 0 ? maxAllowed : '—')}
+              </div>
+            </div>
+
+            <div className="o-tabs" role="tablist">
+              {[['lines', `Order lines (${lines.length})`], ...(order ? [['flow', 'Costing & BOM']] : []), ['other', 'Other info']].map(([id, label]) => (
+                <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>
+              ))}
+            </div>
+
+            {tab === 'lines' && (
               <>
-                <input className={`inp ${tried && !header.styleId ? 'bad' : ''}`} list="order-styles" placeholder="Type to search style"
-                  value={header.styleText} onChange={e => setStyleText(e.target.value)} />
-                <datalist id="order-styles">
-                  {stylesForBrand.map(s => <option key={s.id} value={`${s.code} · ${s.name}`} />)}
-                </datalist>
+                <div className="grid-scroll">
+                  <table className="og">
+                    <thead>
+                      <tr>
+                        <th className="c-act"><button type="button" className="add-btn" onClick={addLine} aria-label="Add order line" title="Add order line">+</button></th>
+                        <th style={{ width: 128 }}>Date</th>
+                        <th style={{ width: 170 }}>Order no.<span className="sub">auto</span></th>
+                        <th style={{ width: 110 }}>Dispatch mode <span className="req">*</span></th>
+                        <th style={{ width: 140 }}>Buyer PO no.<span className="sub">editable after save</span></th>
+                        <th style={{ width: 120 }}>Colour <span className="req">*</span></th>
+                        <th style={{ width: 140 }}>Size range<span className="sub">can pick after save</span></th>
+                        <th style={{ width: "40%", minWidth: 120 }}>Size-wise qty</th>
+                        <th style={{ width: 96 }} className="num">Total qty <span className="req">*</span></th>
+                        <th style={{ width: 128 }}>Ex-factory <span className="req">*</span></th>
+                        <th style={{ width: 128 }}>FOB date <span className="req">*</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.length === 0 && (
+                        <tr><td colSpan={11} className="empty-row">No order lines yet. Click + to add the first line.</td></tr>
+                      )}
+                      {lines.map((l, i) => {
+                        const b = badOf(l);
+                        const range = l.sizeRangeId ? ranges[l.sizeRangeId] : null;
+                        const preview = l.saved ? null : previews[previewIndex++];
+                        return (
+                          <tr key={l.key} data-line={l.key}>
+                            <td className="c-act">
+                              {l.saved
+                                ? <span className="lock" title="Saved line" aria-label="Saved line">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>
+                                  </span>
+                                : <button type="button" className="del-btn" onClick={() => removeLine(l.key)} aria-label={`Delete line ${i + 1}`} title="Delete line">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></svg>
+                                  </button>}
+                            </td>
+                            <td>{l.saved ? fmtDate(l.lineDate)
+                              : <DateInput className={b.lineDate ? 'bad' : ''} ariaLabel={`Date line ${i + 1}`} value={l.lineDate} onChange={v => setLine(l.key, { lineDate: v })} />}</td>
+                            <td className="order-no">{l.saved ? l.orderNo
+                              : <span className="preview">{preview || (brandId ? '…' : 'Pick a brand')} {preview && <small>(on save)</small>}</span>}</td>
+                            <td>{l.saved ? (l.dispatchMode === 'air' ? 'By air' : 'By sea')
+                              : <select data-first className={`ci ${b.dispatchMode ? 'bad' : ''}`} aria-label={`Dispatch mode line ${i + 1}`} value={l.dispatchMode} onChange={e => setLine(l.key, { dispatchMode: e.target.value })}>
+                                  <option value="">Select</option><option value="sea">By sea</option><option value="air">By air</option>
+                                </select>}</td>
+                            <td><input className="ci" aria-label={`Buyer PO no. line ${i + 1}`} placeholder="Add later" value={l.buyerPoNo} onChange={e => setLine(l.key, { buyerPoNo: e.target.value })} /></td>
+                            <td>{l.saved ? l.colourName
+                              : <select className={`ci ${b.colourId ? 'bad' : ''}`} aria-label={`Colour line ${i + 1}`} value={l.colourId} onChange={e => setLine(l.key, { colourId: e.target.value })}>
+                                  <option value="">Select</option>
+                                  {lookups.colours.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>}</td>
+                            <td>
+                              <select className="ci" aria-label={`Size range line ${i + 1}`} value={l.sizeRangeId} onChange={e => setRange(l.key, e.target.value)}>
+                                <option value="">None</option>
+                                {lookups.sizeRanges.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                              </select>
+                            </td>
+                            <td>
+                              {range ? (
+                                <div className="sizes">
+                                  {range.sizes.map(s => (
+                                    <label key={s} className="sz">
+                                      <span className="sz-l">{s}</span>
+                                      <input className={`sz-i ${b.total ? 'bad' : ''}`} inputMode="numeric" aria-label={`Line ${i + 1} size ${s}`}
+                                        value={l.sizes[s] ?? ''} onChange={e => setSize(l.key, s, e.target.value.replace(/[^\d]/g, ''))} />
+                                    </label>
+                                  ))}
+                                </div>
+                              ) : <span className="hint">—</span>}
+                            </td>
+                            <td className="num">
+                              {range
+                                ? <><b>{fmtNum(lineTotal(l))}</b><span className="tag">auto</span></>
+                                : <input className={`ci num ${b.total ? 'bad' : ''}`} inputMode="numeric" aria-label={`Total qty line ${i + 1}`} value={l.manualTotal}
+                                    onChange={e => setLine(l.key, { manualTotal: e.target.value.replace(/[^\d]/g, '') })} />}
+                            </td>
+                            <td>{l.saved ? fmtDate(l.exFactoryDate)
+                              : <DateInput className={b.exFactoryDate ? 'bad' : ''} ariaLabel={`Ex-factory line ${i + 1}`} value={l.exFactoryDate} onChange={v => setLine(l.key, { exFactoryDate: v })} />}</td>
+                            <td>{l.saved ? fmtDate(l.fobDate)
+                              : <DateInput className={b.fobDate ? 'bad' : ''} ariaLabel={`FOB date line ${i + 1}`} value={l.fobDate} onChange={v => setLine(l.key, { fobDate: v })}
+                                  title="Press Enter on the last line to add a new line"
+                                  onKeyDown={e => { if (e.key === 'Enter' && i === lines.length - 1) { e.preventDefault(); setTimeout(addLine, 0); } }} />}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={8}>Total · {plural(lines.length, 'line')}{grandTotal > 0 && ` · max allowed ${maxAllowed}`}</td>
+                        <td className="num"><b>{fmtNum(grandTotal)}</b></td>
+                        <td colSpan={2} />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <p className="hint o-grid-hint">Click + in the header to add a line. Pick a size range to get size boxes in that line. After saving, only buyer PO no., size range and quantities can change.</p>
               </>
             )}
-          </label>
-          <label className="f"><span>Allowed deviation <span className="req">*</span></span>
-            {order ? <span className="ro">{order.allowedDeviation === 'open' ? 'Open (no limit)' : `${order.allowedDeviation}%`}</span> : (
-              <select className="inp" value={header.deviation} onChange={e => setHeader(h => ({ ...h, deviation: e.target.value }))}>
-                <option value="2">2%</option>
-                <option value="5">5%</option>
-                <option value="open">Open (no limit)</option>
-              </select>
+
+            {tab === 'flow' && order && (
+              <div className="grid-scroll"><table className="og o-flow-table">
+                <thead><tr><th>#</th><th>Order no.</th><th className="num">Qty</th><th>Ex-factory</th><th>Costing</th><th>BOM</th></tr></thead>
+                <tbody>
+                  {(flow?.lines || []).map(l => {
+                    const d = daysTo(l.exFactory);
+                    return (
+                      <tr key={l.id}>
+                        <td>{l.lineNo}</td>
+                        <td className="order-no">{l.orderNo}</td>
+                        <td className="num">{fmtNum(l.qty)}</td>
+                        <td>{fmtDate(l.exFactory)}{d !== null && d >= 0 && d <= 60 && l.bom?.status !== 'approved' && <span className="o-pill wr" style={{ marginLeft: 6 }}>{d} days</span>}</td>
+                        <td>
+                          <button type="button" className="o-link" onClick={() => openCosting(l)}>
+                            {l.costing ? `${l.costing.costingNo}` : 'Create costing'}
+                          </button>
+                          {l.costing && <span className={`o-pill ${l.costing.type === 'initial' ? 'wr' : 'ok'}`} style={{ marginLeft: 6 }}>{l.costing.type === 'final' ? 'Final' : l.costing.type === 'actual' ? 'Actual' : 'Initial'}</span>}
+                        </td>
+                        <td>
+                          {l.costing && l.costing.type !== 'initial'
+                            ? <><button type="button" className="o-link" onClick={() => onGo('bom', { orderLineId: l.id })}>{l.bom ? 'Open BOM' : 'Create BOM'}</button>
+                                {l.bom && <span className={`o-pill ${l.bom.status === 'approved' ? 'ok' : 'wr'}`} style={{ marginLeft: 6 }}>{l.bom.status === 'approved' ? 'Approved' : 'Draft'}</span>}</>
+                            : <span className="muted">After Final costing</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table></div>
             )}
-          </label>
-          <label className="f" title="Sum of all order lines, worked out automatically"><span>Total order qty</span>
-            <span className="ro">{fmtNum(grandTotal)} pcs</span>
-          </label>
-        </div>
-      </section>
 
-      <section className="panel">
-        <div className="panel-head panel-head-row">
-          <span>Order lines <span className="muted-normal">· {plural(lines.length, 'line')}</span></span>
-          <span className="muted-normal">Click + to add a line. Pick a size range to get size boxes in that line.</span>
+            {tab === 'other' && (
+              <div className="o-groups">
+                <div>
+                  {cell('Created by', order ? order.createdBy : 'Not saved yet')}
+                  {cell('Created on', order ? new Date(order.createdAt).toLocaleString('en-IN') : '—')}
+                </div>
+                <div>
+                  {cell('Brand', brandName(order ? order.brandId : header.brandId) || '—')}
+                  {cell('Lines', plural(lines.length, 'line'))}
+                </div>
+              </div>
+            )}
+          </section>
         </div>
-        <div className="grid-scroll">
-          <table className="og">
-            <thead>
-              <tr>
-                <th className="c-act"><button type="button" className="add-btn" onClick={addLine} aria-label="Add order line" title="Add order line">+</button></th>
-                <th style={{ width: 128 }}>Date</th>
-                <th style={{ width: 170 }}>Order no.<span className="sub">auto</span></th>
-                <th style={{ width: 110 }}>Dispatch mode <span className="req">*</span></th>
-                <th style={{ width: 140 }}>Buyer PO no.<span className="sub">editable after save</span></th>
-                <th style={{ width: 120 }}>Colour <span className="req">*</span></th>
-                <th style={{ width: 140 }}>Size range<span className="sub">can pick after save</span></th>
-                <th style={{ width: "40%", minWidth: 120 }}>Size-wise qty</th>
-                <th style={{ width: 96 }} className="num">Total qty <span className="req">*</span></th>
-                <th style={{ width: 128 }}>Ex-factory <span className="req">*</span></th>
-                <th style={{ width: 128 }}>FOB date <span className="req">*</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.length === 0 && (
-                <tr><td colSpan={11} className="empty-row">No order lines yet. Click + to add the first line.</td></tr>
-              )}
-              {lines.map((l, i) => {
-                const b = badOf(l);
-                const range = l.sizeRangeId ? ranges[l.sizeRangeId] : null;
-                const preview = l.saved ? null : previews[previewIndex++];
-                return (
-                  <tr key={l.key} data-line={l.key}>
-                    <td className="c-act">
-                      {l.saved
-                        ? <span className="lock" title="Saved line" aria-label="Saved line">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 018 0v3" /></svg>
-                          </span>
-                        : <button type="button" className="del-btn" onClick={() => removeLine(l.key)} aria-label={`Delete line ${i + 1}`} title="Delete line">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></svg>
-                          </button>}
-                    </td>
-                    <td>{l.saved ? fmtDate(l.lineDate)
-                      : <DateInput className={b.lineDate ? 'bad' : ''} ariaLabel={`Date line ${i + 1}`} value={l.lineDate} onChange={v => setLine(l.key, { lineDate: v })} />}</td>
-                    <td className="order-no">{l.saved ? l.orderNo
-                      : <span className="preview">{preview || (brandId ? '…' : 'Pick a brand')} {preview && <small>(on save)</small>}</span>}</td>
-                    <td>{l.saved ? (l.dispatchMode === 'air' ? 'By air' : 'By sea')
-                      : <select data-first className={`ci ${b.dispatchMode ? 'bad' : ''}`} aria-label={`Dispatch mode line ${i + 1}`} value={l.dispatchMode} onChange={e => setLine(l.key, { dispatchMode: e.target.value })}>
-                          <option value="">Select</option><option value="sea">By sea</option><option value="air">By air</option>
-                        </select>}</td>
-                    <td><input className="ci" aria-label={`Buyer PO no. line ${i + 1}`} placeholder="Add later" value={l.buyerPoNo} onChange={e => setLine(l.key, { buyerPoNo: e.target.value })} /></td>
-                    <td>{l.saved ? l.colourName
-                      : <select className={`ci ${b.colourId ? 'bad' : ''}`} aria-label={`Colour line ${i + 1}`} value={l.colourId} onChange={e => setLine(l.key, { colourId: e.target.value })}>
-                          <option value="">Select</option>
-                          {lookups.colours.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>}</td>
-                    <td>
-                      <select className="ci" aria-label={`Size range line ${i + 1}`} value={l.sizeRangeId} onChange={e => setRange(l.key, e.target.value)}>
-                        <option value="">None</option>
-                        {lookups.sizeRanges.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                      </select>
-                    </td>
-                    <td>
-                      {range ? (
-                        <div className="sizes">
-                          {range.sizes.map(s => (
-                            <label key={s} className="sz">
-                              <span className="sz-l">{s}</span>
-                              <input className={`sz-i ${b.total ? 'bad' : ''}`} inputMode="numeric" aria-label={`Line ${i + 1} size ${s}`}
-                                value={l.sizes[s] ?? ''} onChange={e => setSize(l.key, s, e.target.value.replace(/[^\d]/g, ''))} />
-                            </label>
-                          ))}
-                        </div>
-                      ) : <span className="hint">—</span>}
-                    </td>
-                    <td className="num">
-                      {range
-                        ? <><b>{fmtNum(lineTotal(l))}</b><span className="tag">auto</span></>
-                        : <input className={`ci num ${b.total ? 'bad' : ''}`} inputMode="numeric" aria-label={`Total qty line ${i + 1}`} value={l.manualTotal}
-                            onChange={e => setLine(l.key, { manualTotal: e.target.value.replace(/[^\d]/g, '') })} />}
-                    </td>
-                    <td>{l.saved ? fmtDate(l.exFactoryDate)
-                      : <DateInput className={b.exFactoryDate ? 'bad' : ''} ariaLabel={`Ex-factory line ${i + 1}`} value={l.exFactoryDate} onChange={v => setLine(l.key, { exFactoryDate: v })} />}</td>
-                    <td>{l.saved ? fmtDate(l.fobDate)
-                      : <DateInput className={b.fobDate ? 'bad' : ''} ariaLabel={`FOB date line ${i + 1}`} value={l.fobDate} onChange={v => setLine(l.key, { fobDate: v })}
-                          title="Press Enter on the last line to add a new line"
-                          onKeyDown={e => { if (e.key === 'Enter' && i === lines.length - 1) { e.preventDefault(); setTimeout(addLine, 0); } }} />}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={8}>Total · {plural(lines.length, 'line')}{grandTotal > 0 && ` · max allowed ${maxAllowed}`}</td>
-                <td className="num"><b>{fmtNum(grandTotal)}</b></td>
-                <td colSpan={2} />
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </section>
-
-      <div className="audit-line">
-        {order
-          ? <>Created by {order.createdBy} · {new Date(order.createdAt).toLocaleString('en-IN')} · Brand {brandName(order.brandId)}</>
-          : 'Not saved yet'}
-      </div>
-      </div>
-      {order && (
-        <SidePanel entity="order" entityId={order.id} refreshKey={order}
-          linked={(flow?.lines || []).slice(0, 6).flatMap(l => [
-            { label: `Line ${l.lineNo} costing`, value: l.costing ? `${l.costing.costingNo} · ${l.costing.type === 'final' ? 'Final' : l.costing.type === 'actual' ? 'Actual' : 'Initial'}` : 'Not made',
-              tone: l.costing && l.costing.type !== 'initial' ? 'ok' : 'warn',
-              onClick: () => onGo('costing', l.costing ? { costingId: l.costing.id } : { newForLine: l.id }) },
-            { label: `Line ${l.lineNo} BOM`, value: l.bom ? (l.bom.status === 'approved' ? 'Approved' : 'Draft') : 'Not made',
-              tone: l.bom?.status === 'approved' ? 'ok' : 'warn', onClick: () => onGo('bom', { orderLineId: l.id }) }
-          ])} />
-      )}
+        <Chatter entity="order" entityId={order?.id} refreshKey={order} />
       </div>
     </div>
   );

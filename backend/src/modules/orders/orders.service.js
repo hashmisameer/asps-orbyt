@@ -325,13 +325,22 @@ export async function listOrders(companyId, filters = {}) {
   const brandId = optionalId(filters.brandId);
   const categoryId = optionalId(filters.categoryId);
   const styleId = optionalId(filters.styleId);
+  // Quick filters of the Orders list: leaving within 90 days, lines without a Final costing, BOMs not approved
+  const view = ['soon', 'nocosting', 'bompending'].includes(filters.view) ? filters.view : '';
+  const limit = Math.min(Number(filters.limit) || 50, 300);
   const rows = await query(
-    `SELECT o.id, b.name AS brand, s.code AS style_code, s.name AS style_name,
+    `SELECT * FROM (
+     SELECT o.id, o.brand_id, b.name AS brand, s.code AS style_code, s.name AS style_name,
             CASE WHEN pc.id IS NULL THEN c.name ELSE pc.name || ' › ' || c.name END AS category,
             COUNT(l.id)::int AS lines, COALESCE(SUM(l.total_qty), 0)::int AS total_qty,
             MIN(l.order_no) AS first_order_no, MAX(l.order_no) AS last_order_no,
             STRING_AGG(DISTINCT l.buyer_po_no, ', ') AS buyer_pos,
             to_char(MIN(l.ex_factory_date), 'YYYY-MM-DD') AS first_ex_factory,
+            MIN(l.ex_factory_date) AS first_ex_date,
+            (SELECT COUNT(DISTINCT k.order_line_id) FROM costings k JOIN order_lines x ON x.id = k.order_line_id
+              WHERE x.order_id = o.id AND NOT k.is_deleted AND k.costing_type <> 'initial')::int AS final_lines,
+            (SELECT COUNT(*) FROM boms m JOIN order_lines x ON x.id = m.order_line_id
+              WHERE x.order_id = o.id AND m.status = 'approved')::int AS bom_approved,
             o.created_at
        FROM orders o
        JOIN brands b ON b.id = o.brand_id
@@ -348,12 +357,17 @@ export async function listOrders(companyId, filters = {}) {
                WHERE x.order_id = o.id AND (x.order_no ILIKE '%' || $2 || '%' OR x.buyer_po_no ILIKE '%' || $2 || '%'))
              OR b.name ILIKE '%' || $2 || '%' OR s.code ILIKE '%' || $2 || '%' OR s.name ILIKE '%' || $2 || '%')
       GROUP BY o.id, b.name, s.code, s.name, c.name, pc.id, pc.name
-      ORDER BY o.created_at DESC
-      LIMIT 50`, [companyId, q, brandId, categoryId, styleId]);
+     ) t
+     WHERE ($6 = '' OR ($6 = 'soon' AND first_ex_date <= CURRENT_DATE + 90)
+                    OR ($6 = 'nocosting' AND final_lines < lines)
+                    OR ($6 = 'bompending' AND bom_approved < lines))
+     ORDER BY ${view === 'soon' ? 'first_ex_date ASC' : 'created_at DESC'}
+     LIMIT $7`, [companyId, q, brandId, categoryId, styleId, view, limit]);
   return rows.map(r => ({
-    id: r.id, brand: r.brand, category: r.category, styleCode: r.style_code, styleName: r.style_name,
+    id: r.id, brandId: r.brand_id, brand: r.brand, category: r.category, styleCode: r.style_code, styleName: r.style_name,
     lines: r.lines, totalQty: r.total_qty,
     orderNos: r.first_order_no === r.last_order_no ? r.first_order_no : `${r.first_order_no} – ${r.last_order_no.split('/').pop()}`,
-    buyerPos: r.buyer_pos || '', firstExFactory: r.first_ex_factory, createdAt: r.created_at
+    buyerPos: r.buyer_pos || '', firstExFactory: r.first_ex_factory, createdAt: r.created_at,
+    finalLines: r.final_lines, bomApproved: r.bom_approved
   }));
 }

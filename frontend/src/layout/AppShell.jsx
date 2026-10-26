@@ -164,11 +164,8 @@ export default function AppShell({ session, onLogout }) {
   const menuFound = menuWords.length ? allItems.filter(i => menuWords.every(w => `${i.name} ${i.where}`.toLowerCase().includes(w))) : [];
   // Top bar: the module of the screen on view, with its groups as drop-downs (like Orders / Costing / Reports)
   const navMod = menu.find(m => m.code === activeMod);
-  // Module tiles on Home: open the module's first built screen, or show its screens in the Menu panel
-  function openModule(m) {
-    const first = m.groups.flatMap(g => g.items).find(i => READY_SCREENS[i.code]);
-    if (first) openScreen(first); else { closeAll(); setMenuQ(''); setMenuMod(m.code); setMenuOpen(true); }
-  }
+  // Module icons on Home: always show that module's screens in the Menu panel
+  function openModule(m) { closeAll(); setMenuQ(''); setMenuMod(m.code); setMenuOpen(true); }
   const flush = active === 'home' || FLUSH_SCREENS.includes(active);
 
   return (

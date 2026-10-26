@@ -25,7 +25,6 @@ const SCREENS = {
 const Icon = {
   menu: <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="5" r="2" /><circle cx="12" cy="5" r="2" /><circle cx="19" cy="5" r="2" /><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /><circle cx="5" cy="19" r="2" /><circle cx="12" cy="19" r="2" /><circle cx="19" cy="19" r="2" /></svg>,
   close: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>,
-  star: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z" /></svg>,
   approvals: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M6 3h12M6 21h12M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9s10 4 10 9" /></svg>,
   calendar: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>,
   reports: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>,
@@ -70,7 +69,6 @@ export default function AppShell({ session, onLogout }) {
   const [menuMod, setMenuMod] = useState(null);     // module shown in the Menu panel
   const [menuQ, setMenuQ] = useState('');           // search inside the Menu panel
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [openList, setOpenList] = useState(false);  // "open screens" switcher
   const [notice, setNotice] = useState('');
   const [q, setQ] = useState('');                   // text in the command box
   const [sel, setSel] = useState(0);                // highlighted result in the command box
@@ -88,7 +86,6 @@ export default function AppShell({ session, onLogout }) {
   // Top bar icons: only the ones the owner gave this client (and this user's role may see)
   const hasTool = (code) => Boolean(session.permissions?.[code]);
   const quickLinks = [
-    { code: 'tool.favourites', label: 'Favourites', icon: Icon.star },
     { code: 'tool.approvals', label: 'Approvals', icon: Icon.approvals },
     { code: 'tool.calendar', label: 'T&A calendar', icon: Icon.calendar },
     { code: 'tool.reports', label: 'Reports', icon: Icon.reports },
@@ -123,8 +120,8 @@ export default function AppShell({ session, onLogout }) {
   // Ctrl+K opens the command box; Esc closes any drop-down
   useEffect(() => {
     const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setMenuOpen(false); setOpenList(false); setPaletteOpen(true); }
-      if (e.key === 'Escape') { setMenuOpen(false); setOpenList(false); setUserMenu(false); setNavDrop(''); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setMenuOpen(false); setPaletteOpen(true); }
+      if (e.key === 'Escape') { setMenuOpen(false); setUserMenu(false); setNavDrop(''); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -132,7 +129,7 @@ export default function AppShell({ session, onLogout }) {
   useEffect(() => { if (!paletteOpen) { setQ(''); setSel(0); } }, [paletteOpen]);
   useEffect(() => { setSel(0); }, [q]);
 
-  function closeAll() { setMenuOpen(false); setOpenList(false); setPaletteOpen(false); setUserMenu(false); setNavDrop(''); }
+  function closeAll() { setMenuOpen(false); setPaletteOpen(false); setUserMenu(false); setNavDrop(''); }
   function switchTo(id) { closeAll(); setActive(id); }
   function openScreen(item) {
     closeAll();
@@ -149,11 +146,6 @@ export default function AppShell({ session, onLogout }) {
     setTabs(t => (t.includes(id) ? t : [...t, id]));
     setActive(id);
     if (request) setRequests(r => ({ ...r, [id]: { ...request, n: Date.now() } }));
-  }
-  function closeTab(id) {
-    const rest = tabs.filter(x => x !== id);
-    setTabs(rest);
-    if (active === id) setActive(rest.length ? rest[rest.length - 1] : 'home');
   }
 
   const { user, company, unit, financialYear, licence } = session;
@@ -172,7 +164,7 @@ export default function AppShell({ session, onLogout }) {
     <div className="shell">
       <header className="appbar o-nav">
         <button type="button" className={`o-apps ${menuOpen ? 'open' : ''}`} aria-expanded={menuOpen} aria-label="Menu: all modules and screens" title="Menu"
-          onClick={() => { setOpenList(false); setUserMenu(false); setNavDrop(''); setMenuQ(''); setMenuMod(null); setMenuOpen(o => !o); }}>
+          onClick={() => { setUserMenu(false); setNavDrop(''); setMenuQ(''); setMenuMod(null); setMenuOpen(o => !o); }}>
           {menuOpen ? Icon.close : Icon.menu}
         </button>
         <button type="button" className="o-brand" onClick={() => switchTo('home')} aria-label="ORBYT home" title="Home">
@@ -187,7 +179,7 @@ export default function AppShell({ session, onLogout }) {
               return (
                 <div key={g.title} className="o-navg">
                   <button type="button" className={`${on ? 'on' : ''} ${navDrop === g.title ? 'open' : ''}`} aria-expanded={navDrop === g.title}
-                    onClick={() => { setMenuOpen(false); setOpenList(false); setUserMenu(false); setNavDrop(d => (d === g.title ? '' : g.title)); }}>{g.title}</button>
+                    onClick={() => { setMenuOpen(false); setUserMenu(false); setNavDrop(d => (d === g.title ? '' : g.title)); }}>{g.title}</button>
                   {navDrop === g.title && (
                     <div className="pop-panel o-navdrop" role="menu">
                       {g.items.map(item => (
@@ -208,30 +200,11 @@ export default function AppShell({ session, onLogout }) {
             {Icon.search}<span>Jump to…</span><kbd>Ctrl K</kbd>
           </button>
 
-          {tabs.length > 0 && (
-            <div className="appbar-pop">
-              <button type="button" className="o-navbtn" aria-expanded={openList} onClick={() => { setMenuOpen(false); setUserMenu(false); setNavDrop(''); setOpenList(o => !o); }}>
-                <b>{tabs.length}</b> open
-              </button>
-              {openList && (
-                <div className="pop-panel open-panel" role="menu">
-                  <div className="pop-head">Open screens</div>
-                  {tabs.map(id => (
-                    <div key={id} className={`open-row ${active === id ? 'on' : ''}`}>
-                      <button type="button" role="menuitem" onClick={() => switchTo(id)}>{SCREENS[id].title}<small>{SCREENS[id].crumb}</small></button>
-                      <button type="button" className="tab-x" aria-label={`Close ${SCREENS[id].title}`} onClick={() => closeTab(id)}>×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
           {quickLinks.map(t => <button key={t.code} type="button" className="o-navbtn o-navicon" title={t.label} aria-label={t.label}>{t.icon}</button>)}
 
           <div className="appbar-pop">
             <button type="button" className="o-me" aria-haspopup="menu" aria-expanded={userMenu} aria-label={`Account: ${user.username}`}
-              onClick={() => { setMenuOpen(false); setOpenList(false); setNavDrop(''); setUserMenu(o => !o); }}>
+              onClick={() => { setMenuOpen(false); setNavDrop(''); setUserMenu(o => !o); }}>
               <span className="o-co">{company.name}{place && <> · {place}</>}</span>
               <span className="o-av">{initials(user.fullName)}</span>
             </button>
@@ -296,7 +269,7 @@ export default function AppShell({ session, onLogout }) {
           </section>
         </>
       )}
-      {(openList || userMenu || navDrop) && <div className="drop-dim clear" onMouseDown={() => { setOpenList(false); setUserMenu(false); setNavDrop(''); }} />}
+      {(userMenu || navDrop) && <div className="drop-dim clear" onMouseDown={() => { setUserMenu(false); setNavDrop(''); }} />}
 
       {/* Command box */}
       {paletteOpen && (

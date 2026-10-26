@@ -175,9 +175,11 @@ export default function AppShell({ session, onLogout }) {
           onClick={() => { setOpenList(false); setUserMenu(false); setNavDrop(''); setMenuQ(''); setMenuMod(null); setMenuOpen(o => !o); }}>
           {menuOpen ? Icon.close : Icon.menu}
         </button>
-        <button type="button" className="o-brand" onClick={() => switchTo('home')} aria-label="Home">
-          <OrbitMark width={22} /><span>orbyt</span>{navMod && <b>· {navMod.name}</b>}
+        <button type="button" className="o-brand" onClick={() => switchTo('home')} aria-label="ORBYT home" title="Home">
+          <span className="o-brand-tile"><OrbitMark width={24} /></span>
+          <span className="o-brand-word">orb<i>y</i>t</span>
         </button>
+        {navMod && <span className="o-modname">{navMod.name}</span>}
         {navMod && (
           <nav className="o-navgroups" aria-label={navMod.name}>
             {navMod.groups.map(g => {

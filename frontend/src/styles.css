@@ -880,3 +880,14 @@ kbd { font: inherit; font-size: 11px; border: 1px solid var(--border-strong); bo
 .o-finder-list button:hover { background: var(--teal-light); }
 .o-finder-list b { color: var(--teal-dark); font-weight: 600; }
 .o-finder-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+
+/* ORBYT logo in the top bar: white tile with the orbit mark, bold wordmark, then the module name after a divider */
+.o-brand { gap: 9px; padding: 0 6px 0 2px; }
+.o-brand svg * { stroke: revert-layer; }
+.o-brand-tile { width: 32px; height: 32px; border-radius: 9px; background: #fff; display: grid; place-items: center; box-shadow: 0 1px 3px rgba(0, 0, 0, .18); flex: none; }
+.o-brand-tile svg ellipse:first-child { stroke: #A3CCC8; }
+.o-brand-tile svg ellipse:nth-child(2) { stroke: #0F766E; }
+.o-brand-word { font-size: 20px; font-weight: 800; letter-spacing: -.03em; color: #fff; line-height: 1; }
+.o-brand-word i { font-style: normal; color: #7FE3D6; }
+.o-brand:hover .o-brand-tile { box-shadow: 0 0 0 3px rgba(255, 255, 255, .25); }
+.o-modname { display: flex; align-items: center; height: 24px; padding: 0 14px 0 14px; margin-right: 6px; border-left: 1px solid rgba(255, 255, 255, .3); color: #fff; font-weight: 600; font-size: 15px; white-space: nowrap; flex: none; }

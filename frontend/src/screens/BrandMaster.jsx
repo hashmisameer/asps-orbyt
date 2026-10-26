@@ -187,8 +187,8 @@ export default function BrandMaster({ active, session, onGo, request }) {
               </div>
             </div>
           </section>
+          <Chatter entity="brands" entityId={saved?.id} refreshKey={saved} />
         </div>
-        <Chatter entity="brands" entityId={saved?.id} refreshKey={saved} />
       </div>
     </div>
   );

@@ -362,8 +362,8 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
               </div>
             )}
           </section>
+          <Chatter entity="parties" entityId={saved?.id} refreshKey={saved} />
         </div>
-        <Chatter entity="parties" entityId={saved?.id} refreshKey={saved} />
       </div>
     </div>
   );

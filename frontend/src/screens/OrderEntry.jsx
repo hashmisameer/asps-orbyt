@@ -559,8 +559,8 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
               </div>
             )}
           </section>
+          <Chatter entity="order" entityId={order?.id} refreshKey={order} />
         </div>
-        <Chatter entity="order" entityId={order?.id} refreshKey={order} />
       </div>
     </div>
   );

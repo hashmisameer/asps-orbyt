@@ -1,4 +1,5 @@
-// Right-hand chatter of a record: write a note ("Log note"), and read the notes and changes, newest first, by day.
+// Notes and changes of a saved record, shown under the sheet: write a note ("Log note"),
+// and read the notes and changes, newest first, by day. Nothing shows for a record not saved yet.
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 
@@ -35,15 +36,15 @@ export default function Chatter({ entity, entityId, refreshKey, extra }) {
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
 
+  if (!entityId) return null;
   let lastDay = '';
   return (
-    <aside className="o-chat" aria-label="Notes and changes">
+    <section className="o-chat" aria-label="Notes and changes">
       {extra}
-      {!entityId ? (
-        <p className="o-chat-empty">Notes and changes show here once the record is saved.</p>
-      ) : (
+      {(
         <>
           <div className="o-chat-btns">
+            <h2>Notes and changes</h2>
             <button type="button" className={`tb ${writing ? 'tb-primary' : ''}`} onClick={() => setWriting(w => !w)}>Log note</button>
           </div>
           {writing && (
@@ -75,6 +76,6 @@ export default function Chatter({ entity, entityId, refreshKey, extra }) {
           })}
         </>
       )}
-    </aside>
+    </section>
   );
 }

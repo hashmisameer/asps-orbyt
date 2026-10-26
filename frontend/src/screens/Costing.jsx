@@ -450,8 +450,8 @@ export default function Costing({ active, session, onGo, request }) {
               </table>
             )}
           </section>
+          <Chatter entity="costing" entityId={saved?.id} refreshKey={saved} />
         </div>
-        <Chatter entity="costing" entityId={saved?.id} refreshKey={saved} />
       </div>
     </div>
   );

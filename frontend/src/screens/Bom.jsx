@@ -325,8 +325,8 @@ export default function Bom({ active, session, onGo, request }) {
               )}
             </div>
           </section>
+          <Chatter entity="bom" entityId={data.bom?.id} refreshKey={data} />
         </div>
-        <Chatter entity="bom" entityId={data.bom?.id} refreshKey={data} />
       </div>
     </div>
   );

@@ -41,7 +41,8 @@ export default function Bom({ active, session, onGo, request }) {
   const [data, setData] = useState(null);           // { order, finalCosting, bom }
   const [lines, setLines] = useState([]);
   const [remarks, setRemarks] = useState('');
-  const [tab, setTab] = useState(null);             // process id shown in the grid
+  const [tab, setTab] = useState('');               // process shown in the Materials list ('' = all)
+  const [sheetTab, setSheetTab] = useState('mat');  // 'mat' = Materials, 'other' = Other info
   const [mode, setMode] = useState('list');         // 'list' = All BOMs, 'form' = one order line's BOM
   const [listState, setListState] = useState({ search: '', filter: '' });
   const [lastOpened, setLastOpened] = useState(null);
@@ -66,7 +67,7 @@ export default function Bom({ active, session, onGo, request }) {
   }, [request?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    api('/bom/processes').then(p => { setProcesses(p); setTab(String(p[0]?.id || '')); }).catch(e => setError(e.message));
+    api('/bom/processes').then(p => setProcesses(p)).catch(e => setError(e.message));
   }, []);
 
   const approved = data?.bom?.status === 'approved';
@@ -82,7 +83,6 @@ export default function Bom({ active, session, onGo, request }) {
     if (!fresh.length) return;
     setDirty(true); setMessage('');
     setLines(ls => [...ls, ...fresh]);
-    setTab(fresh[0].processId);
   }
 
   const totals = useMemo(() => {
@@ -171,7 +171,7 @@ export default function Bom({ active, session, onGo, request }) {
         <RecordList title="BOMs" active={active} state={listState} setState={setListState} highlightId={lastOpened}
           rowId={r => r.orderLineId}
           onOpen={(id, ids) => { openOrder(id); }}
-          placeholder="Search order no., style, brand or buyer PO…"
+          placeholder="Search order no., style or product category…"
           emptyText="No order lines yet. Make an order in Order entry first."
           filters={Object.entries(STATUS).map(([id, v]) => ({ id, label: v[0] }))}
           fetchRows={({ search, filter }) => api(`/bom/orders?${new URLSearchParams(Object.entries({ search, status: filter }).filter(([, v]) => v))}`)}
@@ -180,6 +180,7 @@ export default function Bom({ active, session, onGo, request }) {
             { label: 'Order no.', cls: 'order-no', cell: r => r.orderNo },
             { label: 'Brand', cell: r => r.brand },
             { label: 'Style', cell: r => <>{r.styleCode} <span className="muted">· {r.styleName}</span></> },
+            { label: 'Product category', cell: r => r.category },
             { label: 'Colour', cell: r => r.colour },
             { label: 'Qty', num: true, cell: r => qty(r.qty) },
             { label: 'Ex-factory', cell: r => fmtDate(r.exFactory) },
@@ -189,14 +190,16 @@ export default function Bom({ active, session, onGo, request }) {
     );
   }
 
-  const current = processes.find(p => String(p.id) === String(tab));
   // Warn when the longest lead time does not fit before the ex-factory date
   const longest = Math.max(0, ...lines.map(l => n(l.leadDays)));
   const left = daysTo(data.order.exFactory);
   const leadWarn = left !== null && longest > 0 && !approved
     ? (longest >= left ? `Ex-factory in ${left} days · longest lead time ${longest} days – material will be late` : `Ex-factory in ${left} days · longest lead time ${longest} days`)
     : '';
-  const tabLines = lines.filter(l => l.processId === String(tab));
+  // Materials list: all items, sorted by process (like the components of an Odoo BOM), or one process
+  const pOrder = (pid) => processes.findIndex(p => String(p.id) === String(pid));
+  const pName = (pid) => processes.find(p => String(p.id) === String(pid))?.name || '—';
+  const tabLines = lines.filter(l => !tab || l.processId === String(tab)).sort((a, b) => pOrder(a.processId) - pOrder(b.processId));
   const canApproveHere = data.bom && allowed.includes('approve') && has('order.bom.approve');
   const steps = [
     { label: 'Not started', state: data.bom ? 'done' : 'on' },
@@ -246,42 +249,57 @@ export default function Bom({ active, session, onGo, request }) {
               <div>
                 <Field label="Order no."><button type="button" className="o-link" onClick={() => flow && onGo('orderEntry', { orderId: flow.line.orderId })}>{data.order.orderNo}</button></Field>
                 <Field label="Style">{data.order.styleCode} · {data.order.styleName}</Field>
+                <Field label="Product category">{data.order.category || '—'}</Field>
                 <Field label="Brand / colour">{data.order.brand} · {data.order.colour}</Field>
-                <Field label="Order qty">{qty(orderQty)} pcs</Field>
-                <Field label="Ex-factory">{fmtDate(data.order.exFactory)}</Field>
               </div>
               <div>
+                <Field label="Order qty">{qty(orderQty)} pcs</Field>
+                <Field label="Ex-factory">{fmtDate(data.order.exFactory)}</Field>
                 <Field label="Final costing" title="Items and rates come from this costing">
                   <button type="button" className="o-link" onClick={() => onGo('costing', flow?.costing ? { costingId: flow.costing.id } : { newForLine: data.order.orderLineId })}>
                     {data.finalCosting ? `${data.finalCosting.costingNo} · ${data.finalCosting.buyer}` : 'None yet · create costing'}
                   </button>
                 </Field>
                 <Field label="Material budget"><b>₹ {money(totals.budget)}</b></Field>
-                <Field label={approved ? 'Approved by' : 'Last saved by'}>
-                  {approved ? `${data.bom.approvedBy} · ${new Date(data.bom.approvedAt).toLocaleDateString('en-IN')}` : data.bom ? data.bom.updatedBy : 'Not saved yet'}
-                </Field>
-                <Field label="Remarks">
-                  <input aria-label="Remarks" className="inp" disabled={readOnly} maxLength={1000} value={remarks} onChange={e => { setRemarks(e.target.value); setDirty(true); }} />
-                </Field>
               </div>
             </div>
 
-            <SheetTabs value={String(tab)} onChange={setTab} tabs={processes.map(p => {
-              const t = totals.per[String(p.id)] || { count: 0, amount: 0 };
-              return [String(p.id), `${p.name} (${t.count}) · ₹ ${money(t.amount)}`];
-            })} />
-            <div className="cost-lines-head o-lines-head">
-              <span className="hint">Items issued to the {current?.name.toLowerCase()} department · {tabLines.length} item{tabLines.length === 1 ? '' : 's'}</span>
-              {!readOnly && <button type="button" className="tb tb-line" style={{ marginLeft: 'auto' }} onClick={() => setPicker(current)}>+ Add items</button>}
+            <SheetTabs value={sheetTab} onChange={setSheetTab} tabs={[['mat', `Materials (${lines.length})`], ['other', 'Other info']]} />
+            {sheetTab === 'other' && (
+              <div className="o-groups">
+                <div>
+                  <Field label={approved ? 'Approved by' : 'Last saved by'}>
+                    {approved ? `${data.bom.approvedBy} · ${new Date(data.bom.approvedAt).toLocaleDateString('en-IN')}` : data.bom ? data.bom.updatedBy : 'Not saved yet'}
+                  </Field>
+                  <Field label="Buyer PO no.">{data.order.buyerPo || '—'}</Field>
+                </div>
+                <div>
+                  <Field label="Remarks">
+                    <input aria-label="Remarks" className="inp" disabled={readOnly} maxLength={1000} value={remarks} onChange={e => { setRemarks(e.target.value); setDirty(true); }} />
+                  </Field>
+                  <Field label="FOB date">{fmtDate(data.order.fob)}</Field>
+                </div>
+              </div>
+            )}
+            {sheetTab === 'mat' && (<>
+            <div className="o-lines-head">
+              <div className="o-chips" role="group" aria-label="Show process">
+                <button type="button" className={!tab ? 'on' : ''} onClick={() => setTab('')}>All ({lines.length})</button>
+                {processes.map(p => {
+                  const t = totals.per[String(p.id)] || { count: 0, amount: 0 };
+                  return <button key={p.id} type="button" className={String(tab) === String(p.id) ? 'on' : ''} onClick={() => setTab(String(p.id))}>{p.name} ({t.count})</button>;
+                })}
+              </div>
+              {!readOnly && <button type="button" className="tb tb-line" style={{ marginLeft: 'auto' }} onClick={() => setPicker('all')}>+ Add items</button>}
             </div>
             <div className="grid-scroll">
               {tabLines.length === 0 ? (
-                <p className="empty-row">No {current?.name.toLowerCase()} items yet.{data.finalCosting && has('order.bom.from_costing') ? ' Use "Pull from costing" or "+ Add items".' : ' Use "+ Add items".'}</p>
+                <p className="empty-row">No {tab ? `${pName(tab).toLowerCase()} ` : ''}items yet.{data.finalCosting && has('order.bom.from_costing') ? ' Use "Pull from costing" or "+ Add items".' : ' Use "+ Add items".'}</p>
               ) : (
                 <table className="og bom-grid">
                   <thead>
                     <tr>
-                      <th>Item</th><th>UOM</th><th className="num">Consumption<span className="sub">per pc</span></th><th className="num">Excess %</th>
+                      <th>Item</th><th title="Department this material is issued to (set on the item master)">Process</th><th>UOM</th><th className="num">Consumption<span className="sub">per pc</span></th><th className="num">Excess %</th>
                       <th className="num">Total avg</th><th className="num">Order qty</th><th className="num">Required qty<span className="sub">rounded up</span></th>
                       <th className="num">Costing rate</th><th className="num">Budgeted rate</th><th className="num">Amount ₹</th>
                       <th>Supplier</th><th className="num">Lead days</th><th title="The buyer supplies this material">From buyer</th><th className="c-act" aria-label="Delete" />
@@ -294,6 +312,7 @@ export default function Bom({ active, session, onGo, request }) {
                       return (
                         <tr key={l.key}>
                           <td><div className="itm">{l.item}<small>{l.groupName}</small></div></td>
+                          <td><span className="o-pill no">{pName(l.processId)}</span></td>
                           <td><input className="ci" style={{ minWidth: 50 }} disabled={readOnly} aria-label="UOM" value={l.uom} onChange={e => setLine(l.key, { uom: e.target.value.toUpperCase() })} /></td>
                           <td><input className="ci num" style={{ minWidth: 70 }} disabled={readOnly} inputMode="decimal" aria-label="Consumption" value={l.consumption} onChange={e => setLine(l.key, { consumption: e.target.value })} /></td>
                           <td><input className="ci num" style={{ minWidth: 56 }} disabled={readOnly} inputMode="decimal" aria-label="Excess %" value={l.excessPct} onChange={e => setLine(l.key, { excessPct: e.target.value })} /></td>
@@ -316,9 +335,18 @@ export default function Bom({ active, session, onGo, request }) {
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={10}>Total · {tabLines.length} item{tabLines.length === 1 ? '' : 's'}{tab ? ` in ${pName(tab)}` : ''}</td>
+                      <td className="num"><b>{money(tabLines.reduce((a, l) => a + calc(l, orderQty).amount, 0))}</b></td>
+                      <td colSpan={4} />
+                    </tr>
+                  </tfoot>
                 </table>
               )}
+              {!readOnly && <button type="button" className="o-link o-addline" onClick={() => setPicker('all')}>Add a line</button>}
             </div>
+            </>)}
           </section>
           <Chatter entity="bom" entityId={data.bom?.id} refreshKey={data} />
         </div>

@@ -34,21 +34,26 @@ export async function listOrders(companyId, { search, status } = {}) {
   const rows = await query(
     `SELECT l.id, l.order_no, l.total_qty, to_char(l.ex_factory_date, 'YYYY-MM-DD') AS ex_factory,
             b.name AS brand, s.code AS style_code, s.name AS style_name, c.name AS colour,
+            CASE WHEN pc.id IS NULL THEN cat.name ELSE pc.name || ' › ' || cat.name END AS category,
             bm.status AS bom_status, (SELECT COUNT(*) FROM bom_lines x WHERE x.bom_id = bm.id)::int AS bom_lines
        FROM order_lines l
        JOIN orders o ON o.id = l.order_id
        JOIN brands b ON b.id = o.brand_id
        JOIN styles s ON s.id = o.style_id
        JOIN colours c ON c.id = l.colour_id
+       JOIN product_categories cat ON cat.id = o.product_category_id
+       LEFT JOIN product_categories pc ON pc.id = cat.parent_id
        LEFT JOIN boms bm ON bm.order_line_id = l.id AND bm.company_id = l.company_id
       WHERE l.company_id = $1
         AND ($2 = '' OR l.order_no ILIKE '%' || $2 || '%' OR s.code ILIKE '%' || $2 || '%' OR s.name ILIKE '%' || $2 || '%'
+             OR cat.name ILIKE '%' || $2 || '%' OR pc.name ILIKE '%' || $2 || '%'
              OR b.name ILIKE '%' || $2 || '%' OR l.buyer_po_no ILIKE '%' || $2 || '%')
         AND ($3::text IS NULL OR COALESCE(bm.status, 'none') = $3)
       ORDER BY l.created_at DESC LIMIT 200`, [companyId, q, st]);
   return rows.map(r => ({
     orderLineId: r.id, orderNo: r.order_no, qty: r.total_qty, exFactory: r.ex_factory, brand: r.brand,
-    styleCode: r.style_code, styleName: r.style_name, colour: r.colour, bomStatus: r.bom_status || 'none', bomLines: r.bom_lines
+    styleCode: r.style_code, styleName: r.style_name, colour: r.colour, category: r.category,
+    bomStatus: r.bom_status || 'none', bomLines: r.bom_lines
   }));
 }
 
@@ -67,12 +72,14 @@ async function orderLineInfo(db, companyId, orderLineId) {
   const r = (await db.query(
     `SELECT l.id, l.order_no, l.total_qty, l.buyer_po_no, to_char(l.ex_factory_date, 'YYYY-MM-DD') AS ex_factory,
             to_char(l.fob_date, 'YYYY-MM-DD') AS fob, o.style_id, b.name AS brand, s.code AS style_code, s.name AS style_name,
-            c.name AS colour
+            c.name AS colour, CASE WHEN pc.id IS NULL THEN cat.name ELSE pc.name || ' › ' || cat.name END AS category
        FROM order_lines l
        JOIN orders o ON o.id = l.order_id
        JOIN brands b ON b.id = o.brand_id
        JOIN styles s ON s.id = o.style_id
        JOIN colours c ON c.id = l.colour_id
+       JOIN product_categories cat ON cat.id = o.product_category_id
+       LEFT JOIN product_categories pc ON pc.id = cat.parent_id
       WHERE l.id = $1 AND l.company_id = $2`, [orderLineId, companyId])).rows[0];
   if (!r) throw new AppError(404, 'Order not found.');
   return r;
@@ -97,7 +104,7 @@ export async function getBom(companyId, orderLineId, db = pool) {
   return {
     order: {
       orderLineId: ol.id, orderNo: ol.order_no, qty: ol.total_qty, buyerPo: ol.buyer_po_no || '', exFactory: ol.ex_factory, fob: ol.fob,
-      brand: ol.brand, styleCode: ol.style_code, styleName: ol.style_name, colour: ol.colour
+      brand: ol.brand, styleCode: ol.style_code, styleName: ol.style_name, colour: ol.colour, category: ol.category
     },
     finalCosting: costing ? { id: costing.id, costingNo: costing.costing_no, buyer: costing.buyer } : null,
     bom: bom ? {

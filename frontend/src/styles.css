@@ -866,3 +866,10 @@ kbd { font: inherit; font-size: 11px; border: 1px solid var(--border-strong); bo
 .o-chips button:hover { border-color: var(--teal); }
 .o-chips button.on { background: var(--teal-light); border-color: var(--teal); color: var(--teal-dark); font-weight: 600; }
 .o-addline { display: inline-block; margin: 8px 8px 0; font-weight: 500; }
+
+/* Top bar never overlaps: groups keep their space, company name and "Jump to" text drop out first on smaller screens */
+.o-nav-right { flex: none; }
+.o-brand, .o-apps { flex: none; }
+.o-co { white-space: nowrap; }
+@media (max-width: 1600px) { .o-co { display: none; } }
+@media (max-width: 1440px) { .o-jump { min-width: 0; } .o-jump span, .o-jump kbd { display: none; } }

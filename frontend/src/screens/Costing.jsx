@@ -68,7 +68,6 @@ export default function Costing({ active, session, onGo, request }) {
   const [picker, setPicker] = useState(null);            // section whose item picker is open
   const [mode, setMode] = useState('list');               // 'list' = All costings, 'form' = one costing
   const [listState, setListState] = useState({ search: '', filter: '' });
-  const [listIds, setListIds] = useState([]);
   const [lastOpened, setLastOpened] = useState(null);
   const [sheetTab, setSheetTab] = useState('cost');        // 'cost' sheet or 'rev' revisions
   const [flow, setFlow] = useState(null);
@@ -258,7 +257,7 @@ export default function Costing({ active, session, onGo, request }) {
         {message && <div className="alert alert-success" role="status">{message}</div>}
         <RecordList title="Costings" active={active} state={listState} setState={setListState} highlightId={lastOpened}
           onNew={allowed.includes('create') ? startNew : null}
-          onOpen={(id, ids) => { setListIds(ids); openCosting(id); }}
+          onOpen={(id, ids) => { openCosting(id); }}
           placeholder="Search costing no., buyer, style, order no. or description…"
           emptyText="No costings yet. Click New to make the first one."
           filters={Object.entries(TYPE_NAMES).map(([id, label]) => ({ id, label: `${label} costings` }))}
@@ -283,7 +282,6 @@ export default function Costing({ active, session, onGo, request }) {
   const sheet = SECTIONS.find(x => x.key === tab);
   const secLines = lines.filter(l => l.section === tab);
   const material = MATERIAL.includes(tab);
-  const at = saved ? listIds.indexOf(saved.id) : -1;
   const title = saved ? saved.costingNo : 'New costing';
   const order = ['initial', 'final', 'actual'];
   const steps = order.map((t, i) => ({ label: TYPE_NAMES[t], state: i < order.indexOf(header.type) ? 'done' : t === header.type ? 'on' : '' }));
@@ -292,8 +290,7 @@ export default function Costing({ active, session, onGo, request }) {
   return (
     <div className="o-page">
       {picker && <ItemPicker section={picker} canCreateItem={canCreateItem} onClose={() => setPicker(null)} onAdd={(list) => { addLines(picker, list); setPicker(null); }} />}
-      <ControlPanel crumbs={[{ label: 'Costings', onClick: backToList }, { label: viewing ? `${title} · revision ${viewing}` : title }]}
-        pager={at >= 0 ? { index: at, total: listIds.length, onPrev: () => openCosting(listIds[at - 1]), onNext: () => openCosting(listIds[at + 1]) } : null}>
+      <ControlPanel crumbs={[{ label: 'Costings', onClick: backToList }, { label: viewing ? `${title} · revision ${viewing}` : title }]}>
         <AllButton label="All costings" onClick={backToList} />
         {saved && allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
         {dirty && saved && <span className="chip chip-amber">unsaved changes</span>}

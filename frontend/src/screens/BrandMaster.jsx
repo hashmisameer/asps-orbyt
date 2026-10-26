@@ -16,7 +16,6 @@ export default function BrandMaster({ active, session, onGo, request }) {
   const [form, setForm] = useState(blank());
   const [mode, setMode] = useState('list');          // 'list' = All brands, 'form' = one brand
   const [listState, setListState] = useState({ search: '', filter: '' });
-  const [listIds, setListIds] = useState([]);
   const [lastOpened, setLastOpened] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -91,7 +90,7 @@ export default function BrandMaster({ active, session, onGo, request }) {
         {error && <div className="alert alert-error" role="alert">{error}</div>}
         <RecordList title="Brands" active={active} state={listState} setState={setListState} highlightId={lastOpened}
           onNew={allowed.includes('create') ? startNew : null}
-          onOpen={(id, ids) => { setListIds(ids); openBrand(id); }}
+          onOpen={(id, ids) => { openBrand(id); }}
           placeholder="Search brand code, brand name or buyer…"
           emptyText="No brands yet. Click New to add the first one."
           fetchRows={({ search }) => api(`/brands?${new URLSearchParams(search ? { search } : {})}`)}
@@ -107,14 +106,12 @@ export default function BrandMaster({ active, session, onGo, request }) {
     );
   }
 
-  const at = saved ? listIds.indexOf(saved.id) : -1;
   const title = saved ? `${saved.code} · ${saved.name}` : 'New brand';
   const buyer = lookups.buyers.find(b => b.id === form.buyerId);
 
   return (
     <div className="o-page">
-      <ControlPanel crumbs={[{ label: 'Brands', onClick: backToList }, { label: title }]}
-        pager={at >= 0 ? { index: at, total: listIds.length, onPrev: () => openBrand(listIds[at - 1]), onNext: () => openBrand(listIds[at + 1]) } : null}>
+      <ControlPanel crumbs={[{ label: 'Brands', onClick: backToList }, { label: title }]}>
         <AllButton label="All brands" onClick={backToList} />
         {saved && allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
         {dirty && saved && <span className="chip chip-amber">unsaved changes</span>}

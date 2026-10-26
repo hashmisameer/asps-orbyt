@@ -85,7 +85,6 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState('list');         // 'list' = Orders list, 'form' = one order
-  const [listIds, setListIds] = useState([]);       // order of the list, for ‹ › on the form
   const [listState, setListState] = useState({ search: '', view: '', group: true });
   const [tab, setTab] = useState('lines');
   const [lastOpened, setLastOpened] = useState(null); // order to highlight when going back to the list
@@ -301,14 +300,13 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
       <>
         {serverError && <div className="alert alert-error" role="alert">{serverError}</div>}
         <OrderList active={active} state={listState} setState={setListState} highlightId={lastOpened}
-          onNew={startNew} onOpen={(id, ids) => { setListIds(ids); setTab('lines'); openOrder(id); }} />
+          onNew={startNew} onOpen={(id) => { setTab('lines'); openOrder(id); }} />
       </>
     );
   }
 
   const st = orderState(flow);
   const warn = order && flow ? orderWarn(flow) : '';
-  const at = order ? listIds.indexOf(order.id) : -1;
   const title = order ? (order.lines.length > 1 ? `${order.lines[0].orderNo} – ${order.lines[order.lines.length - 1].orderNo.split('/').pop()}` : order.lines[0]?.orderNo) : 'New order';
   const openCosting = (l) => onGo('costing', l.costing ? { costingId: l.costing.id } : { newForLine: l.id });
   const cell = (label, value, opts = {}) => (
@@ -321,8 +319,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   return (
     <div className="o-page">
       <ControlPanel
-        crumbs={[{ label: 'Orders', onClick: backToList }, { label: title }]}
-        pager={at >= 0 ? { index: at, total: listIds.length, onPrev: () => openOrder(listIds[at - 1]), onNext: () => openOrder(listIds[at + 1]) } : null}>
+        crumbs={[{ label: 'Orders', onClick: backToList }, { label: title }]}>
         <button type="button" className="tb" onClick={backToList} title="See all saved orders, search and open one">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>
           All orders <kbd className="tb-kbd">F3</kbd>

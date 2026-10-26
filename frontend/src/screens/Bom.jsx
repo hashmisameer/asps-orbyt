@@ -44,7 +44,6 @@ export default function Bom({ active, session, onGo, request }) {
   const [tab, setTab] = useState(null);             // process id shown in the grid
   const [mode, setMode] = useState('list');         // 'list' = All BOMs, 'form' = one order line's BOM
   const [listState, setListState] = useState({ search: '', filter: '' });
-  const [listIds, setListIds] = useState([]);
   const [lastOpened, setLastOpened] = useState(null);
   const [picker, setPicker] = useState(null);       // process object, or 'all'
   const [busy, setBusy] = useState(false);
@@ -171,7 +170,7 @@ export default function Bom({ active, session, onGo, request }) {
         {error && <div className="alert alert-error" role="alert">{error}</div>}
         <RecordList title="BOMs" active={active} state={listState} setState={setListState} highlightId={lastOpened}
           rowId={r => r.orderLineId}
-          onOpen={(id, ids) => { setListIds(ids); openOrder(id); }}
+          onOpen={(id, ids) => { openOrder(id); }}
           placeholder="Search order no., style, brand or buyer PO…"
           emptyText="No order lines yet. Make an order in Order entry first."
           filters={Object.entries(STATUS).map(([id, v]) => ({ id, label: v[0] }))}
@@ -198,7 +197,6 @@ export default function Bom({ active, session, onGo, request }) {
     ? (longest >= left ? `Ex-factory in ${left} days · longest lead time ${longest} days – material will be late` : `Ex-factory in ${left} days · longest lead time ${longest} days`)
     : '';
   const tabLines = lines.filter(l => l.processId === String(tab));
-  const at = listIds.indexOf(data.order.orderLineId);
   const canApproveHere = data.bom && allowed.includes('approve') && has('order.bom.approve');
   const steps = [
     { label: 'Not started', state: data.bom ? 'done' : 'on' },
@@ -212,8 +210,7 @@ export default function Bom({ active, session, onGo, request }) {
         <BomItemPicker process={picker === 'all' ? null : picker} processes={processes} existing={new Set(lines.map(l => l.itemId))}
           onClose={() => setPicker(null)} onAdd={(list) => { addLines(list); setPicker(null); }} />
       )}
-      <ControlPanel crumbs={[{ label: 'BOMs', onClick: backToList }, { label: `BOM · ${data.order.orderNo}` }]}
-        pager={at >= 0 ? { index: at, total: listIds.length, onPrev: () => openOrder(listIds[at - 1]), onNext: () => openOrder(listIds[at + 1]) } : null}>
+      <ControlPanel crumbs={[{ label: 'BOMs', onClick: backToList }, { label: `BOM · ${data.order.orderNo}` }]}>
         <AllButton label="All BOMs" onClick={backToList} />
         {dirty && <span className="chip chip-amber">unsaved changes</span>}
       </ControlPanel>

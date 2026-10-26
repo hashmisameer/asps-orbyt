@@ -31,7 +31,6 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
   const [adding, setAdding] = useState(null);         // { key, kind: 'city' | 'state', text } while typing a new place
   const [mode, setMode] = useState('list');          // 'list' = All parties, 'form' = one party
   const [listState, setListState] = useState({ search: '', filter: '' });
-  const [listIds, setListIds] = useState([]);
   const [lastOpened, setLastOpened] = useState(null);
   const [tab, setTab] = useState('addr');
   const [busy, setBusy] = useState(false);
@@ -190,7 +189,7 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
         {error && <div className="alert alert-error" role="alert">{error}</div>}
         <RecordList title="Parties" active={active} state={listState} setState={setListState} highlightId={lastOpened}
           newLabel="New" onNew={allowed.includes('create') ? startNew : null}
-          onOpen={(id, ids) => { setListIds(ids); setTab('addr'); openParty(id); }}
+          onOpen={(id, ids) => { setTab('addr'); openParty(id); }}
           placeholder="Search party name, party code or GST code…"
           emptyText="No parties yet. Click New to add the first one."
           filters={[{ id: 'buyer', label: 'Buyers (incl. Both)' }, { id: 'supplier', label: 'Suppliers (incl. Both)' }, { id: 'both', label: 'Only Both' }]}
@@ -210,13 +209,11 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
     );
   }
 
-  const at = saved ? listIds.indexOf(saved.id) : -1;
   const title = saved ? `${saved.code} · ${saved.name}` : 'New party';
 
   return (
     <div className="o-page">
-      <ControlPanel crumbs={[{ label: 'Parties', onClick: backToList }, { label: title }]}
-        pager={at >= 0 ? { index: at, total: listIds.length, onPrev: () => openParty(listIds[at - 1]), onNext: () => openParty(listIds[at + 1]) } : null}>
+      <ControlPanel crumbs={[{ label: 'Parties', onClick: backToList }, { label: title }]}>
         <AllButton label="All parties" onClick={backToList} />
         {saved && allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
         {dirty && saved && <span className="chip chip-amber">unsaved changes</span>}

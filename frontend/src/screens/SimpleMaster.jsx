@@ -65,7 +65,6 @@ export default function SimpleMaster({ kind, active, session }) {
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState('list');          // 'list' = all records, 'form' = one record
   const [listState, setListState] = useState({ search: '', filter: '' });
-  const [listRows, setListRows] = useState([]);      // rows of the list, for ‹ › on the form
   const [lastOpened, setLastOpened] = useState(null);
   const [dirty, setDirty] = useState(false);
 
@@ -86,7 +85,6 @@ export default function SimpleMaster({ kind, active, session }) {
     const label = (f, v) => (f.ref ? (rf[f.key] || []).find(o => o.id === String(v))?.label || '' : f.options ? (f.options.find(o => o[0] === v) || [v, v])[1] : String(v ?? ''));
     const q = search.trim().toLowerCase();
     const rows = r.rows.filter(x => (!filter || (filter === 'active') === x.isActive) && (!q || cfg.fields.some(f => label(f, x[f.key]).toLowerCase().includes(q))));
-    setListRows(rows);
     return rows;
   }
 
@@ -151,7 +149,6 @@ export default function SimpleMaster({ kind, active, session }) {
     );
   }
 
-  const at = form.id ? listRows.findIndex(r => r.id === form.id) : -1;
   const title = form.id ? (form.name || form.code) : `New ${cfg.title.toLowerCase()}`;
   const half = Math.ceil(cfg.fields.length / 2);
   const fieldOf = (f) => (
@@ -172,8 +169,7 @@ export default function SimpleMaster({ kind, active, session }) {
 
   return (
     <div className="o-page no-chat">
-      <ControlPanel crumbs={[{ label: plural(cfg), onClick: backToList }, { label: title }]}
-        pager={at >= 0 ? { index: at, total: listRows.length, onPrev: () => openRow(listRows[at - 1]), onNext: () => openRow(listRows[at + 1]) } : null}>
+      <ControlPanel crumbs={[{ label: plural(cfg), onClick: backToList }, { label: title }]}>
         <AllButton label={`All ${cfg.plural}`} onClick={backToList} />
         {form.id && allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
         {dirty && form.id && <span className="chip chip-amber">unsaved changes</span>}

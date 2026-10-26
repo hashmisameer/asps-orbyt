@@ -1,8 +1,8 @@
 // Pieces of the record pages (list -> form), the same on every screen:
-//   ControlPanel  breadcrumb (Orders / ORD/26-27/UTH/0011), buttons, and "3 / 14 ‹ ›" to step through the list
+//   ControlPanel  breadcrumb (Orders / ORD/26-27/UTH/0011) and buttons
 //   StatusBar     action buttons on the left, the record's stages on the right (Draft › Saved › Costing final …)
 
-export function ControlPanel({ crumbs, children, pager }) {
+export function ControlPanel({ crumbs, children }) {
   return (
     <div className="o-cp">
       <nav className="o-bc" aria-label="Breadcrumb">
@@ -14,13 +14,6 @@ export function ControlPanel({ crumbs, children, pager }) {
         ))}
       </nav>
       <div className="o-cp-btns">{children}</div>
-      {pager && pager.total > 0 && (
-        <div className="o-pager" aria-label="Move through the list">
-          <span>{pager.index + 1} / {pager.total}</span>
-          <button type="button" className="tb" aria-label="Previous" disabled={pager.index <= 0} onClick={pager.onPrev}>‹</button>
-          <button type="button" className="tb" aria-label="Next" disabled={pager.index >= pager.total - 1} onClick={pager.onNext}>›</button>
-        </div>
-      )}
     </div>
   );
 }

@@ -18,6 +18,8 @@ export default function SidePanel({ linked = [], entity, entityId, refreshKey, c
     return () => { stop = true; };
   }, [entity, entityId, refreshKey]);
 
+  // Nothing to show (e.g. a new costing without an order): no column at all, so the page uses the full width
+  if (!linked.length && !children && !(entity && entityId)) return null;
   return (
     <aside className="side-col">
       {linked.length > 0 && (

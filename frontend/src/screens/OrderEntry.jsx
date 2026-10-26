@@ -88,6 +88,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   const [listIds, setListIds] = useState([]);       // order of the list, for ‹ › on the form
   const [listState, setListState] = useState({ search: '', view: '', group: true });
   const [tab, setTab] = useState('lines');
+  const [lastOpened, setLastOpened] = useState(null); // order to highlight when going back to the list
   const [focusKey, setFocusKey] = useState(null);   // new line to put the cursor in
   const [flow, setFlow] = useState(null);           // costing / BOM state of the saved lines
 
@@ -240,7 +241,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
       loadSaved(saved);
       setTried(false);
       setProblems([]);
-      setMessage(`${plural(saved.lines.length, 'order line')} saved. PO no. and size-wise qty can still be filled later.`);
+      setMessage(saved.id);
     } catch (e) {
       setServerError(e.message);
       if (order) { try { loadSaved(await api(`/orders/${order.id}`)); } catch { /* keep screen as is */ } }
@@ -263,6 +264,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   }
   function backToList() {
     if (isDirty && !window.confirm('Discard the changes on this screen and go back to the list?')) return;
+    setLastOpened(order?.id || null);
     setOrder(null); setHeader(blankHeader()); setLines([blankLine()]);
     setTried(false); setProblems([]); setServerError(''); setMessage('');
     setMode('list');
@@ -298,7 +300,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
     return (
       <>
         {serverError && <div className="alert alert-error" role="alert">{serverError}</div>}
-        <OrderList active={active} state={listState} setState={setListState}
+        <OrderList active={active} state={listState} setState={setListState} highlightId={lastOpened}
           onNew={startNew} onOpen={(id, ids) => { setListIds(ids); setTab('lines'); openOrder(id); }} />
       </>
     );
@@ -329,6 +331,10 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
       <ControlPanel
         crumbs={[{ label: 'Orders', onClick: backToList }, { label: title }]}
         pager={at >= 0 ? { index: at, total: listIds.length, onPrev: () => openOrder(listIds[at - 1]), onNext: () => openOrder(listIds[at + 1]) } : null}>
+        <button type="button" className="tb" onClick={backToList} title="See all saved orders, search and open one">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>
+          All orders <kbd className="tb-kbd">F3</kbd>
+        </button>
         {order && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
         {order && hasChanges && <span className="chip chip-amber">unsaved changes</span>}
       </ControlPanel>
@@ -347,7 +353,14 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
             {has('order.entry.import_excel') && !order && <button type="button" className="tb" title="Coming in a later phase" onClick={() => onNotice('Excel import is coming in a later phase.')}>Import lines from Excel</button>}
           </StatusBar>
 
-          {message && <div className="alert alert-success" role="status">{message}</div>}
+          {message && order && message === order.id && (
+            <div className="alert alert-success o-saved" role="status">
+              <span>Order <b>{title}</b> saved with {plural(order.lines.length, 'line')}. PO no. and size-wise qty can still be filled later.</span>
+              <button type="button" className="tb" onClick={backToList}>See it in All orders</button>
+              <button type="button" className="tb" onClick={startNew}>Make another order</button>
+            </div>
+          )}
+          {message && typeof message === 'string' && <div className="alert alert-success" role="status">{message}</div>}
           {serverError && <div className="alert alert-error" role="alert">{serverError}</div>}
           {tried && liveProblems.length > 0 && <div className="alert alert-error" role="alert">Fix before saving · {liveProblems.join(' · ')}</div>}
 

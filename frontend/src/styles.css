@@ -825,3 +825,8 @@ kbd { font: inherit; font-size: 11px; border: 1px solid var(--border-strong); bo
 .o-form { grid-template-columns: minmax(0, 1fr) 300px; }
 .o-flow-table td, .o-flow-table th { white-space: nowrap; }
 .o-flow-table td:nth-child(5), .o-flow-table td:nth-child(6) { width: 30%; }
+.o-saved { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.o-saved span { flex: 1; min-width: 260px; }
+.o-saved .tb { height: 30px; }
+.o-lrow.o-hl td { background: #F0FAF8; }
+.o-lrow.o-hl td:first-child { box-shadow: inset 3px 0 0 var(--teal); }

@@ -17,13 +17,18 @@ function Pill({ done, of }) {
   return <span className={`o-pill ${done ? 'wr' : 'no'}`}>{done} of {of}</span>;
 }
 
-export default function OrderList({ active, onOpen, onNew, state, setState }) {
+export default function OrderList({ active, onOpen, onNew, state, setState, highlightId }) {
   const { search, view, group } = state;
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [shut, setShut] = useState({});           // brand groups folded away
   const box = useRef(null);
+  // Bring the order you just came from into view
+  useEffect(() => {
+    if (!rows || !highlightId) return;
+    document.querySelector(`[data-order="${highlightId}"]`)?.scrollIntoView({ block: 'center' });
+  }, [rows, highlightId]);
 
   useEffect(() => {
     let stop = false;
@@ -57,8 +62,8 @@ export default function OrderList({ active, onOpen, onNew, state, setState }) {
   const filterName = FILTERS.find(f => f.id === view)?.label;
 
   const row = (r) => (
-    <tr key={r.id} className="o-lrow" tabIndex={0} onClick={() => onOpen(r.id, ids)} onKeyDown={e => { if (e.key === 'Enter') onOpen(r.id, ids); }}>
-      <td className="order-no">{r.orderNos || '—'}</td>
+    <tr key={r.id} data-order={r.id} className={`o-lrow ${r.id === highlightId ? 'o-hl' : ''}`} tabIndex={0} onClick={() => onOpen(r.id, ids)} onKeyDown={e => { if (e.key === 'Enter') onOpen(r.id, ids); }}>
+      <td className="order-no">{r.orderNos || '—'}{r.id === highlightId && <span className="o-pill ok" style={{ marginLeft: 8 }}>Last opened</span>}</td>
       {!group && <td>{r.brand}</td>}
       <td>{r.styleCode} <span className="muted">· {r.styleName}</span></td>
       <td>{r.category}</td>

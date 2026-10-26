@@ -14,7 +14,7 @@ export default function BrandMaster({ active, session, onGo, request }) {
   const [loadError, setLoadError] = useState('');
   const [saved, setSaved] = useState(null);
   const [form, setForm] = useState(blank());
-  const [mode, setMode] = useState('list');          // 'list' = All brands, 'form' = one brand
+  const [mode, setMode] = useState(() => (allowed.includes('create') ? 'form' : 'list')); // opens on a new brand; 'list' = All brands
   const [listState, setListState] = useState({ search: '', filter: '' });
   const [lastOpened, setLastOpened] = useState(null);
   const [busy, setBusy] = useState(false);

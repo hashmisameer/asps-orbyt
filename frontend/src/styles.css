@@ -873,3 +873,10 @@ kbd { font: inherit; font-size: 11px; border: 1px solid var(--border-strong); bo
 .o-co { white-space: nowrap; }
 @media (max-width: 1600px) { .o-co { display: none; } }
 @media (max-width: 1440px) { .o-jump { min-width: 0; } .o-jump span, .o-jump kbd { display: none; } }
+.o-finder { max-width: 1060px; }
+.o-finder-list { margin: 8px 0 0 150px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.o-finder-list button { display: grid; grid-template-columns: 180px minmax(0, 1.6fr) minmax(0, 1fr) 80px 96px; gap: 10px; align-items: center; width: 100%; padding: 9px 12px; border: 0; border-bottom: 1px solid var(--border); background: var(--white); font: inherit; text-align: left; cursor: pointer; }
+.o-finder-list button:last-child { border-bottom: 0; }
+.o-finder-list button:hover { background: var(--teal-light); }
+.o-finder-list b { color: var(--teal-dark); font-weight: 600; }
+.o-finder-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }

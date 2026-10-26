@@ -66,7 +66,7 @@ export default function Costing({ active, session, onGo, request }) {
   const [lines, setLines] = useState([]);
   const [tab, setTab] = useState('fabric');             // section whose lines are shown
   const [picker, setPicker] = useState(null);            // section whose item picker is open
-  const [mode, setMode] = useState('list');               // 'list' = All costings, 'form' = one costing
+  const [mode, setMode] = useState(() => (allowed.includes('create') ? 'form' : 'list')); // opens on a new costing; 'list' = All costings
   const [listState, setListState] = useState({ search: '', filter: '' });
   const [lastOpened, setLastOpened] = useState(null);
   const [sheetTab, setSheetTab] = useState('cost');        // 'cost' sheet or 'rev' revisions

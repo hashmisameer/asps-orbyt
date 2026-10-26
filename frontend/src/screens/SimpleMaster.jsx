@@ -63,7 +63,7 @@ export default function SimpleMaster({ kind, active, session }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState('list');          // 'list' = all records, 'form' = one record
+  const [mode, setMode] = useState(() => (allowed.includes('create') ? 'form' : 'list')); // opens on a new record; 'list' = all records
   const [listState, setListState] = useState({ search: '', filter: '' });
   const [lastOpened, setLastOpened] = useState(null);
   const [dirty, setDirty] = useState(false);

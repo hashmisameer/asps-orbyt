@@ -43,7 +43,7 @@ export default function Bom({ active, session, onGo, request }) {
   const [remarks, setRemarks] = useState('');
   const [tab, setTab] = useState('');               // process shown in the Materials list ('' = all)
   const [sheetTab, setSheetTab] = useState('mat');  // 'mat' = Materials, 'other' = Other info
-  const [mode, setMode] = useState('list');         // 'list' = All BOMs, 'form' = one order line's BOM
+  const [mode, setMode] = useState('form');         // opens on 'pick an order'; 'list' = All BOMs
   const [listState, setListState] = useState({ search: '', filter: '' });
   const [lastOpened, setLastOpened] = useState(null);
   const [picker, setPicker] = useState(null);       // process object, or 'all'
@@ -164,7 +164,7 @@ export default function Bom({ active, session, onGo, request }) {
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  if (mode === 'list' || !data) {
+  if (mode === 'list') {
     return (
       <>
         {error && <div className="alert alert-error" role="alert">{error}</div>}
@@ -187,6 +187,26 @@ export default function Bom({ active, session, onGo, request }) {
             { label: 'BOM', cell: r => <span className={`o-pill ${STATUS[r.bomStatus][1]}`}>{STATUS[r.bomStatus][0]}{r.bomLines ? ` · ${r.bomLines} items` : ''}</span> }
           ]} />
       </>
+    );
+  }
+
+  // New BOM: first pick the order (search by order no., style or product category)
+  if (!data) {
+    return (
+      <div className="o-page">
+        <ControlPanel crumbs={[{ label: 'BOMs', onClick: backToList }, { label: 'New BOM' }]}>
+          <AllButton label="All BOMs" onClick={backToList} />
+        </ControlPanel>
+        <div className="o-form">
+          <div className="o-main">
+            {error && <div className="alert alert-error" role="alert">{error}</div>}
+            <section className="o-sheet">
+              <div className="o-title"><span>BOM</span><h1>New BOM</h1></div>
+              <OrderFinder onPick={openOrder} />
+            </section>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -351,6 +371,45 @@ export default function Bom({ active, session, onGo, request }) {
           <Chatter entity="bom" entityId={data.bom?.id} refreshKey={data} />
         </div>
       </div>
+    </div>
+  );
+}
+
+// Pick the order a new BOM is for: type order no., style or product category, then click the order
+function OrderFinder({ onPick }) {
+  const [q, setQ] = useState('');
+  const [rows, setRows] = useState(null);
+  useEffect(() => {
+    if (!q.trim()) { setRows(null); return undefined; }
+    let stop = false;
+    const t = setTimeout(() => {
+      api(`/bom/orders?${new URLSearchParams({ search: q.trim() })}`).then(r => { if (!stop) setRows(r); }).catch(() => { if (!stop) setRows([]); });
+    }, 250);
+    return () => { stop = true; clearTimeout(t); };
+  }, [q]);
+  return (
+    <div className="o-finder">
+      <Field label="Order no." req title="Type the order no., style or product category">
+        <input autoFocus aria-label="Find order" className="inp" placeholder="Type order no., style or product category, e.g. UTH/0007, ST-2215, Tops"
+          value={q} onChange={e => setQ(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && rows?.[0]) onPick(rows[0].orderLineId); }} />
+      </Field>
+      {rows && (
+        <div className="o-finder-list" role="listbox" aria-label="Orders">
+          {rows.length === 0 && <p className="empty-row">No order matches "{q}".</p>}
+          {rows.slice(0, 10).map(r => (
+            <button key={r.orderLineId} type="button" role="option" aria-selected="false" onClick={() => onPick(r.orderLineId)}>
+              <b>{r.orderNo}</b>
+              <span>{r.styleCode} · {r.styleName}</span>
+              <span>{r.category}</span>
+              <span>{qty(r.qty)} pcs</span>
+              <span className={`o-pill ${STATUS[r.bomStatus][1]}`}>{STATUS[r.bomStatus][0]}</span>
+            </button>
+          ))}
+          {rows.length > 10 && <p className="hint" style={{ margin: '6px 10px' }}>{rows.length - 10} more – type more to narrow down.</p>}
+        </div>
+      )}
+      {!rows && <p className="hint o-grid-hint">Every saved order shows up here. Pick one to add its items. Orders that already have a BOM open it.</p>}
     </div>
   );
 }

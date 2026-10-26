@@ -84,7 +84,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   const [serverError, setServerError] = useState('');
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
-  const [mode, setMode] = useState('list');         // 'list' = Orders list, 'form' = one order
+  const [mode, setMode] = useState(() => ((session?.permissions?.['order.entry'] || []).includes('create') ? 'form' : 'list')); // opens on a new order; 'list' = All orders
   const [listState, setListState] = useState({ search: '', view: '', group: true });
   const [tab, setTab] = useState('lines');
   const [lastOpened, setLastOpened] = useState(null); // order to highlight when going back to the list

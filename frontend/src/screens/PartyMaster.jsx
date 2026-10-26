@@ -29,7 +29,7 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
   const [header, setHeader] = useState(blankHeader());
   const [addresses, setAddresses] = useState([]);
   const [adding, setAdding] = useState(null);         // { key, kind: 'city' | 'state', text } while typing a new place
-  const [mode, setMode] = useState('list');          // 'list' = All parties, 'form' = one party
+  const [mode, setMode] = useState(() => (allowed.includes('create') ? 'form' : 'list')); // opens on a new party; 'list' = All parties
   const [listState, setListState] = useState({ search: '', filter: '' });
   const [lastOpened, setLastOpened] = useState(null);
   const [tab, setTab] = useState('addr');

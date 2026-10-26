@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import BomSearch from './BomSearch.jsx';
+import FlowStrip, { lineSteps, daysTo } from '../components/FlowStrip.jsx';
+import SidePanel from '../components/SidePanel.jsx';
 import BomItemPicker from './BomItemPicker.jsx';
 
 const COLOURS = ['#0F766E', '#2563EB', '#D97706', '#7C3AED', '#DB2777', '#0891B2'];
@@ -28,7 +30,7 @@ const toLine = (l) => ({
   budgetedRate: str(l.budgetedRate), supplier: l.supplier || '', leadDays: str(l.leadDays), fromBuyer: !!l.fromBuyer
 });
 
-export default function Bom({ active, session }) {
+export default function Bom({ active, session, onGo, request }) {
   const allowed = session?.permissions?.['order.bom'] || [];
   // Functions and reports the owner gave this client (hidden when switched off)
   const has = (code) => Boolean(session?.permissions?.[code]);
@@ -43,6 +45,20 @@ export default function Bom({ active, session }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [dirty, setDirty] = useState(false);
+  const [flow, setFlow] = useState(null);
+
+  // Flow strip of the picked order line (reloads after save / approve / reopen)
+  useEffect(() => {
+    if (!data) { setFlow(null); return undefined; }
+    let stop = false;
+    api(`/links/order-line/${data.order.orderLineId}`).then(f => { if (!stop) setFlow(f); }).catch(() => { if (!stop) setFlow(null); });
+    return () => { stop = true; };
+  }, [data]);
+
+  // Opened from another screen (order or costing flow)
+  useEffect(() => {
+    if (request?.orderLineId) openOrder(request.orderLineId);
+  }, [request?.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     api('/bom/processes').then(p => { setProcesses(p); setTab(String(p[0]?.id || '')); }).catch(e => setError(e.message));
@@ -140,6 +156,12 @@ export default function Bom({ active, session }) {
 
   const status = !data ? ['NO ORDER PICKED', 'chip-grey'] : !data.bom ? ['NEW', 'chip-grey'] : approved ? ['APPROVED', 'chip-teal'] : dirty ? ['DRAFT · CHANGES PENDING', 'chip-amber'] : ['DRAFT', 'chip-amber'];
   const current = processes.find(p => String(p.id) === String(tab));
+  // Warn when the longest lead time does not fit before the ex-factory date
+  const longest = Math.max(0, ...lines.map(l => n(l.leadDays)));
+  const left = data ? daysTo(data.order.exFactory) : null;
+  const leadWarn = data && left !== null && longest > 0 && !approved
+    ? (longest >= left ? `Ex-factory in ${left} days · longest lead time ${longest} days – material will be late` : `Ex-factory in ${left} days · longest lead time ${longest} days`)
+    : '';
   const tabLines = lines.filter(l => l.processId === String(tab));
 
   return (
@@ -155,15 +177,12 @@ export default function Bom({ active, session }) {
         <span className={`chip ${status[1]}`}>{status[0]}</span>
       </div>
       <div className="toolbar">
-        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Pick order (F3)</button>
-        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : 'Save (Ctrl+S)'}</button>
+        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Pick order <kbd className="tb-kbd">F3</kbd></button>
+        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
         {has('order.bom.from_costing') && (
           <button type="button" className="tb" disabled={readOnly || !data.finalCosting} onClick={pullFromCosting}
             title={data && !data.finalCosting ? 'This order has no Final costing yet' : 'Add the fabric, trims and packing items of the Final costing'}>Pull from costing</button>
         )}
-        {data?.bom && allowed.includes('approve') && has('order.bom.approve') && (approved
-          ? <button type="button" className="tb" onClick={() => changeStatus('reopen')}>Reopen</button>
-          : <button type="button" className="tb" onClick={() => changeStatus('approve')}>Approve</button>)}
         {has('order.bom.print') && <button type="button" className="tb tb-soon" style={{ marginLeft: 'auto' }} title="Coming in a later phase">Print</button>}
       </div>
 
@@ -174,12 +193,15 @@ export default function Bom({ active, session }) {
         <section className="panel bom-empty">
           <h2>Pick an order to start its BOM</h2>
           <p className="hint">Press F3 or click "Pick order". Orders show whether their BOM is not started, a draft or approved.</p>
-          <button type="button" className="tb tb-primary" onClick={() => setFindOpen(true)}>Pick order (F3)</button>
+          <button type="button" className="tb tb-primary" onClick={() => setFindOpen(true)}>Pick order <kbd className="tb-kbd">F3</kbd></button>
         </section>
       ) : (
         <>
+          {flow && <FlowStrip steps={lineSteps(flow, 'bom', onGo)} warn={leadWarn} />}
+          <div className="page-cols">
+          <div className="page-main">
           <section className="panel">
-            <div className="panel-head">ORDER</div>
+            <div className="panel-head">Order</div>
             <div className="form-grid bom-head">
               <label className="f"><span>Order no.</span><span className="ro">{data.order.orderNo}</span></label>
               <label className="f"><span>Style</span><span className="ro">{data.order.styleCode} · {data.order.styleName}</span></label>
@@ -262,11 +284,29 @@ export default function Bom({ active, session }) {
               )}
             </div>
           </section>
-          {data.bom && (
-            <p className="hint">
-              {approved ? `Approved by ${data.bom.approvedBy} · ${new Date(data.bom.approvedAt).toLocaleString('en-IN')}` : `Last saved by ${data.bom.updatedBy} · ${new Date(data.bom.updatedAt).toLocaleString('en-IN')}`}
-            </p>
-          )}
+          </div>
+          <SidePanel entity={data.bom ? 'bom' : null} entityId={data.bom?.id} refreshKey={data}
+            linked={[
+              { label: 'Order', value: data.order.orderNo, tone: 'ok', onClick: () => onGo('orderEntry', { orderId: flow?.line.orderId }) },
+              { label: 'Final costing', value: data.finalCosting ? data.finalCosting.costingNo : 'Not made', tone: data.finalCosting ? 'ok' : 'warn',
+                onClick: () => onGo('costing', flow?.costing ? { costingId: flow.costing.id } : { newForLine: data.order.orderLineId }) },
+              { label: 'Purchase orders', value: 'Comes with Purchase' }
+            ]}>
+            <section className="side-box">
+              <h2>Approval</h2>
+              <div className="side-row"><span>Status</span><b className={`side-val ${approved ? 'ok' : 'warn'}`}>{!data.bom ? 'Not saved' : approved ? 'Approved · locked' : 'Draft'}</b></div>
+              {approved && <div className="side-row"><span>Approved by</span><b>{data.bom.approvedBy} · {new Date(data.bom.approvedAt).toLocaleDateString('en-IN')}</b></div>}
+              {data.bom && !approved && <div className="side-row"><span>Last saved by</span><b>{data.bom.updatedBy}</b></div>}
+              {data.bom && allowed.includes('approve') && has('order.bom.approve') && (
+                <div className="side-act">
+                  {approved
+                    ? <button type="button" className="tb" onClick={() => changeStatus('reopen')}>Reopen for changes</button>
+                    : <button type="button" className="tb tb-primary" onClick={() => changeStatus('approve')}>Approve &amp; lock</button>}
+                </div>
+              )}
+            </section>
+          </SidePanel>
+          </div>
         </>
       )}
     </div>

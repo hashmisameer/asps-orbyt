@@ -94,7 +94,7 @@ export default function ClientSetup({ id, catalog, onBack, onCreated }) {
 
       <div className="toolbar">
         <button type="button" className="tb" onClick={back}>← All clients</button>
-        <button type="button" className="tb tb-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : isNew ? 'Create client (Ctrl+S)' : 'Save (Ctrl+S)'}</button>
+        <button type="button" className="tb tb-primary" onClick={save} disabled={busy}>{busy ? 'Saving…' : isNew ? <>Create client <kbd className="tb-kbd">Ctrl S</kbd></> : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
         {!isNew && <button type="button" className="tb" style={{ marginLeft: 'auto' }} onClick={() => setResetOpen(o => !o)}>Reset client admin password</button>}
       </div>
 
@@ -117,7 +117,7 @@ export default function ClientSetup({ id, catalog, onBack, onCreated }) {
 
       {tab === 'details' && <div className="owner-cols">
         <section className="panel">
-          <div className="panel-head">CLIENT COMPANY</div>
+          <div className="panel-head">Client company</div>
           <div className="form-grid owner-grid">
             <label className="f span2"><span>Company name <span className="req">*</span></span><input className="inp" {...field('name')} /></label>
             <label className="f"><span>Short code <span className="req">*</span></span>
@@ -134,7 +134,7 @@ export default function ClientSetup({ id, catalog, onBack, onCreated }) {
         </section>
 
         <section className="panel">
-          <div className="panel-head">CONTACT PERSON &amp; LICENCE</div>
+          <div className="panel-head">Contact person &amp; licence</div>
           <div className="form-grid owner-grid two">
             <label className="f"><span>Contact name <span className="req">*</span></span><input className="inp" {...field('contactName')} /></label>
             <label className="f"><span>Designation</span><input className="inp" {...field('contactDesignation')} /></label>

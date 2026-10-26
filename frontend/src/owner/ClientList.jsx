@@ -19,7 +19,7 @@ export default function ClientList({ onOpen }) {
       </div>
       {error && <div className="alert alert-error" role="alert">{error}</div>}
       <section className="panel">
-        <div className="panel-head">ALL CLIENTS{rows ? ` · ${rows.length}` : ''}</div>
+        <div className="panel-head">All clients{rows ? ` · ${rows.length}` : ''}</div>
         <table className="og">
           <thead><tr><th>Code</th><th>Client</th><th>City</th><th className="num">Modules on</th><th className="num">Users</th><th>Licence valid till</th><th>Add-ons</th><th>Status</th></tr></thead>
           <tbody>

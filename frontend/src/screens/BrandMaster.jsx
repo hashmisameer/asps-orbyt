@@ -2,6 +2,7 @@
 // Same look and keys as Party master: + New (F2), Search (F3), Save (Ctrl+S).
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
+import SidePanel from '../components/SidePanel.jsx';
 
 const blank = () => ({ code: '', name: '', buyerId: '', currencyId: '', isExport: false, isActive: true });
 
@@ -56,7 +57,7 @@ function BrandSearch({ onOpen, onClose }) {
   );
 }
 
-export default function BrandMaster({ active, session }) {
+export default function BrandMaster({ active, session, onGo }) {
   const allowed = session?.permissions?.['masters.brand'] || [];
   const [lookups, setLookups] = useState(null);
   const [loadError, setLoadError] = useState('');
@@ -69,6 +70,15 @@ export default function BrandMaster({ active, session }) {
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => { api('/brands/lookups').then(setLookups).catch(e => setLoadError(e.message)); }, []);
+
+  // Orders of this brand (right-hand panel)
+  const [links, setLinks] = useState(null);
+  useEffect(() => {
+    if (!saved) { setLinks(null); return undefined; }
+    let stop = false;
+    api(`/links/brand/${saved.id}`).then(l => { if (!stop) setLinks(l); }).catch(() => { if (!stop) setLinks(null); });
+    return () => { stop = true; };
+  }, [saved]);
 
   const canSave = saved ? allowed.includes('edit') : allowed.includes('create');
   const codeLocked = saved && saved.orders > 0;
@@ -135,15 +145,17 @@ export default function BrandMaster({ active, session }) {
         </span>
       </div>
       <div className="toolbar">
-        <button type="button" className="tb" onClick={startNew}>+ New (F2)</button>
-        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search (F3)</button>
-        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : 'Save (Ctrl+S)'}</button>
+        <button type="button" className="tb" onClick={startNew}>+ New <kbd className="tb-kbd">F2</kbd></button>
+        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search <kbd className="tb-kbd">F3</kbd></button>
+        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
       </div>
       {error && <div className="alert alert-error" role="alert">{error}</div>}
       {message && <div className="alert alert-success" role="status">{message}</div>}
 
+      <div className="page-cols">
+      <div className="page-main">
       <section className="panel">
-        <div className="panel-head">BRAND DETAILS</div>
+        <div className="panel-head">Brand details</div>
         <div className="form-grid party-head">
           <label className="f" title={codeLocked ? 'This code is already in order numbers, so it can\'t be changed' : '2 to 5 letters or numbers'}>
             <span>Brand code <span className="req">*</span></span>
@@ -175,6 +187,19 @@ export default function BrandMaster({ active, session }) {
           </div>
         </div>
       </section>
+      </div>
+      {saved && (
+        <SidePanel entity="brands" entityId={saved.id} refreshKey={saved}
+          linked={[
+            ...(form.buyerId ? [{ label: 'Buyer', value: lookups.buyers.find(b => b.id === form.buyerId)?.name || '—', tone: 'ok', onClick: () => onGo('party', { partyId: Number(form.buyerId) }) }] : []),
+            ...(links ? [
+              { label: 'Orders', value: links.orders || '—' },
+              { label: 'Order lines', value: links.orderLines || '—' },
+              { label: 'Total qty', value: links.qty ? `${links.qty.toLocaleString('en-IN')} pcs` : '—' }
+            ] : [])
+          ]} />
+      )}
+      </div>
     </div>
   );
 }

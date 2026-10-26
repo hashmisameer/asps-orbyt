@@ -2,6 +2,8 @@
 // Header: brand, product category, style, allowed deviation.
 // Lines: one row per order no., with dispatch mode, buyer PO, colour, size range, size-wise qty and dates.
 // After saving, only buyer PO no., size range and quantities can change.
+import FlowStrip, { daysTo } from '../components/FlowStrip.jsx';
+import SidePanel from '../components/SidePanel.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import DateInput from '../components/DateInput.jsx';
@@ -23,7 +25,7 @@ function toInt(v) {
   return Number.isNaN(n) || n < 0 ? 0 : n;
 }
 
-// A new line copies dispatch mode, colour and dates from the line before it
+// A new line copies dispatch mode, colour and dates from the line above (usually the same in one order)
 const blankLine = (prev) => ({
   key: newKey(), id: null, saved: false, dirty: true, orderNo: '',
   lineDate: today(), dispatchMode: prev?.dispatchMode || '', buyerPoNo: '', colourId: prev?.colourId || '',
@@ -41,7 +43,40 @@ const fromServer = (l) => ({
 
 const blankHeader = () => ({ brandId: '', productCategoryId: '', styleId: '', styleText: '', deviation: '2', remarks: '' });
 
-export default function OrderEntry({ active, onNotice, session }) {
+// Flow of a whole order: costing and BOM counted over its lines
+function orderSteps(flow, go) {
+  const n = flow.lines.length;
+  const finals = flow.lines.filter(l => l.costing && l.costing.type !== 'initial');
+  const approved = flow.lines.filter(l => l.bom?.status === 'approved');
+  const firstNoCost = flow.lines.find(l => !(l.costing && l.costing.type !== 'initial'));
+  const firstNoBom = flow.lines.find(l => l.costing && l.costing.type !== 'initial' && l.bom?.status !== 'approved');
+  const of = (k) => (n === 1 ? '' : `${k} of ${n} lines · `);
+  return [
+    { title: 'Order', state: 'done', sub: `${n} line${n === 1 ? '' : 's'} saved` },
+    finals.length === n
+      ? { title: 'Costing', state: 'done', sub: n === 1 ? finals[0].costing.costingNo : `All ${n} lines Final` }
+      : { title: 'Costing', state: 'todo', sub: `${of(finals.length)}No Final costing`.replace(' · No Final costing', ' Final'),
+        action: { label: firstNoCost.costing ? 'Open' : 'Create', onClick: () => go('costing', firstNoCost.costing ? { costingId: firstNoCost.costing.id } : { newForLine: firstNoCost.id }) } },
+    approved.length === n
+      ? { title: 'BOM', state: 'done', sub: n === 1 ? 'Approved' : `All ${n} lines approved` }
+      : firstNoBom
+        ? { title: 'BOM', state: 'todo', sub: `${of(approved.length)}${firstNoBom.bom ? 'Draft' : 'Not made'}`.replace(/ · (Draft|Not made)$/, ' approved'),
+          action: { label: firstNoBom.bom ? 'Open' : 'Create', onClick: () => go('bom', { orderLineId: firstNoBom.id }) } }
+        : { title: 'BOM', state: 'wait', sub: 'After Final costing' },
+    { title: 'Purchase', state: 'wait', sub: approved.length ? 'Comes with the Purchase module' : 'After BOM approval' }
+  ];
+}
+
+// Nearest ex-factory date whose BOM is not approved yet
+function orderWarn(flow) {
+  const open = flow.lines.filter(l => l.bom?.status !== 'approved' && l.exFactory)
+    .map(l => ({ l, d: daysTo(l.exFactory) })).filter(x => x.d !== null && x.d <= 60).sort((a, b) => a.d - b.d)[0];
+  if (!open) return '';
+  const when = open.d < 0 ? `was ${-open.d} day${open.d === -1 ? '' : 's'} ago` : open.d === 0 ? 'is today' : `is in ${open.d} day${open.d === 1 ? '' : 's'}`;
+  return `Line ${open.l.lineNo} ex-factory ${when} · BOM not approved`;
+}
+
+export default function OrderEntry({ active, onNotice, session, onGo, request }) {
   // Functions and reports the owner gave this client (hidden when switched off)
   const has = (code) => Boolean(session?.permissions?.[code]);
   const [lookups, setLookups] = useState(null);
@@ -56,18 +91,25 @@ export default function OrderEntry({ active, onNotice, session }) {
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
-  const [focusKey, setFocusKey] = useState(null);   // line to put the cursor in after adding it
+  const [focusKey, setFocusKey] = useState(null);   // new line to put the cursor in
+  const [flow, setFlow] = useState(null);           // costing / BOM state of the saved lines
 
   useEffect(() => {
     api('/orders/lookups').then(setLookups).catch(e => setLoadError(e.message));
   }, []);
 
-  // Put the cursor in the first box of a newly added line
+  // Flow strip: reload whenever the saved order changes (open, save)
   useEffect(() => {
-    if (!focusKey) return;
-    document.querySelector(`[data-line="${focusKey}"] [data-first]`)?.focus();
-    setFocusKey(null);
-  }, [focusKey]);
+    if (!order) { setFlow(null); return undefined; }
+    let stop = false;
+    api(`/links/order/${order.id}`).then(f => { if (!stop) setFlow(f); }).catch(() => { if (!stop) setFlow(null); });
+    return () => { stop = true; };
+  }, [order]);
+
+  // Opened from another screen (e.g. the Order step of a costing)
+  useEffect(() => {
+    if (request?.orderId && lookups) openOrder(request.orderId);
+  }, [request?.n, lookups]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ranges = useMemo(() => Object.fromEntries((lookups?.sizeRanges || []).map(r => [String(r.id), r])), [lookups]);
   const brandId = order ? String(order.brandId) : header.brandId;
@@ -98,13 +140,13 @@ export default function OrderEntry({ active, onNotice, session }) {
   };
   const setSize = (key, size, value) => { setMessage(''); setLines(ls => ls.map(l => (l.key === key ? { ...l, sizes: { ...l.sizes, [size]: value }, dirty: true } : l))); };
   const setRange = (key, value) => setLine(key, { sizeRangeId: value, sizes: value ? Object.fromEntries(ranges[value].sizes.map(s => [s, ''])) : {} });
-  // The new line is built from the latest lines, so a date just typed on the last line is copied too
   const addLine = () => {
     setMessage('');
-    const key = newKey();
+    // Build from the latest lines, so a date typed just before Enter is copied too
+    let key = null;
     // "Copy previous line" fills dates, dispatch mode and colour from the line above
-    setLines(ls => [...ls, { ...blankLine(has('order.entry.copy_line') ? ls[ls.length - 1] : undefined), key }]);
-    setFocusKey(key);
+    setLines(ls => { const line = blankLine(has('order.entry.copy_line') ? ls[ls.length - 1] : undefined); key = line.key; return [...ls, line]; });
+    setTimeout(() => setFocusKey(key), 0);
   };
   const removeLine = (key) => setLines(ls => ls.filter(l => l.key !== key));
 
@@ -113,6 +155,14 @@ export default function OrderEntry({ active, onNotice, session }) {
     setHeader(h => ({ ...h, styleText: text, styleId: match ? String(match.id) : '' }));
   };
   const stylesForBrand = (lookups?.styles || []).filter(s => !header.brandId || !s.brandId || String(s.brandId) === header.brandId);
+
+  // Put the cursor in the first field of a newly added line
+  useEffect(() => {
+    if (!focusKey) return;
+    const el = document.querySelector(`[data-line="${focusKey}"] [data-first]`);
+    if (el) el.focus();
+    setFocusKey(null);
+  }, [focusKey]);
 
   // ---------- checks before saving (the server checks again) ----------
   function check() {
@@ -202,12 +252,6 @@ export default function OrderEntry({ active, onNotice, session }) {
     }
   }
 
-  function startNew() {
-    if (isDirty && !window.confirm('Discard the changes on this screen and start a new order?')) return;
-    setOrder(null); setHeader(blankHeader()); setLines([blankLine()]);
-    setTried(false); setProblems([]); setServerError(''); setMessage('');
-  }
-
   async function openOrder(id) {
     if (isDirty && !window.confirm('Discard the changes on this screen and open the selected order?')) return;
     try {
@@ -215,10 +259,17 @@ export default function OrderEntry({ active, onNotice, session }) {
       loadSaved(saved);
       setHeader(blankHeader());
       setTried(false); setProblems([]); setServerError(''); setMessage('');
+      setFindOpen(false);
     } catch (e) {
       setServerError(e.message);
+      setFindOpen(false);
     }
-    setFindOpen(false);
+  }
+
+  function startNew() {
+    if (isDirty && !window.confirm('Discard the changes on this screen and start a new order?')) return;
+    setOrder(null); setHeader(blankHeader()); setLines([blankLine()]);
+    setTried(false); setProblems([]); setServerError(''); setMessage('');
   }
 
   // Keyboard: F2 = new, F3 = search, Ctrl+S = save (only while this tab is on screen)
@@ -251,9 +302,9 @@ export default function OrderEntry({ active, onNotice, session }) {
       </div>
 
       <div className="toolbar">
-        <button type="button" className="tb" onClick={startNew}>+ New (F2)</button>
-        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search (F3)</button>
-        <button type="button" className="tb tb-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save (Ctrl+S)'}</button>
+        <button type="button" className="tb" onClick={startNew}>+ New <kbd className="tb-kbd">F2</kbd></button>
+        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search <kbd className="tb-kbd">F3</kbd></button>
+        <button type="button" className="tb tb-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
         {(has('order.entry.print') || has('order.entry.import_excel')) && <span className="tb-sep" aria-hidden="true" />}
         {has('order.entry.print') && <button type="button" className="tb tb-soon" title="Coming in a later phase" onClick={() => onNotice('Print is coming in a later phase.')}>Print</button>}
         {has('order.entry.import_excel') && <button type="button" className="tb tb-soon" title="Coming in a later phase" onClick={() => onNotice('Excel import is coming in a later phase.')}>Import lines from Excel</button>}
@@ -266,8 +317,12 @@ export default function OrderEntry({ active, onNotice, session }) {
         <div className="alert alert-error" role="alert">Fix before saving · {liveProblems.join(' · ')}</div>
       )}
 
+      {order && flow && <FlowStrip steps={orderSteps(flow, onGo)} warn={orderWarn(flow)} />}
+
+      <div className="page-cols">
+      <div className="page-main">
       <section className="panel">
-        <div className="panel-head">ORDER HEADER</div>
+        <div className="panel-head">Order header</div>
         <div className="form-grid">
           <label className="f" title="The brand initials go into each order no."><span>Brand <span className="req">*</span></span>
             {order ? <span className="ro">{order.brandName} ({order.brandInitials})</span> : (
@@ -313,7 +368,7 @@ export default function OrderEntry({ active, onNotice, session }) {
 
       <section className="panel">
         <div className="panel-head panel-head-row">
-          <span>ORDER LINES <span className="muted-normal">· {plural(lines.length, 'line')}</span></span>
+          <span>Order lines <span className="muted-normal">· {plural(lines.length, 'line')}</span></span>
           <span className="muted-normal">Click + to add a line. Pick a size range to get size boxes in that line.</span>
         </div>
         <div className="grid-scroll">
@@ -327,7 +382,7 @@ export default function OrderEntry({ active, onNotice, session }) {
                 <th style={{ width: 140 }}>Buyer PO no.<span className="sub">editable after save</span></th>
                 <th style={{ width: 120 }}>Colour <span className="req">*</span></th>
                 <th style={{ width: 140 }}>Size range<span className="sub">can pick after save</span></th>
-                <th style={{ width: '40%', minWidth: 120 }}>Size-wise qty</th>
+                <th style={{ width: "40%", minWidth: 120 }}>Size-wise qty</th>
                 <th style={{ width: 96 }} className="num">Total qty <span className="req">*</span></th>
                 <th style={{ width: 128 }}>Ex-factory <span className="req">*</span></th>
                 <th style={{ width: 128 }}>FOB date <span className="req">*</span></th>
@@ -416,6 +471,18 @@ export default function OrderEntry({ active, onNotice, session }) {
         {order
           ? <>Created by {order.createdBy} · {new Date(order.createdAt).toLocaleString('en-IN')} · Brand {brandName(order.brandId)}</>
           : 'Not saved yet'}
+      </div>
+      </div>
+      {order && (
+        <SidePanel entity="order" entityId={order.id} refreshKey={order}
+          linked={(flow?.lines || []).slice(0, 6).flatMap(l => [
+            { label: `Line ${l.lineNo} costing`, value: l.costing ? `${l.costing.costingNo} · ${l.costing.type === 'final' ? 'Final' : l.costing.type === 'actual' ? 'Actual' : 'Initial'}` : 'Not made',
+              tone: l.costing && l.costing.type !== 'initial' ? 'ok' : 'warn',
+              onClick: () => onGo('costing', l.costing ? { costingId: l.costing.id } : { newForLine: l.id }) },
+            { label: `Line ${l.lineNo} BOM`, value: l.bom ? (l.bom.status === 'approved' ? 'Approved' : 'Draft') : 'Not made',
+              tone: l.bom?.status === 'approved' ? 'ok' : 'warn', onClick: () => onGo('bom', { orderLineId: l.id }) }
+          ])} />
+      )}
       </div>
     </div>
   );

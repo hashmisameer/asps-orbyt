@@ -1,9 +1,14 @@
 // Costing screen: cost of one garment for a style or an order line.
-// Header on top (with base and total amount), one card per cost section; click a card to see its lines.
+//   Top:    title, buttons, and the flow strip (Order -> Costing -> BOM -> Purchase) when the costing is for an order
+//   Left:   costing details (a short summary once saved; "Edit details" opens the fields), one card per cost
+//           section, and the lines of the picked section
+//   Right:  Linked (order, BOM, buyer), Revisions and Last changes
 // Amounts are worked out here as you type and worked out again by the server on save.
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import DateInput from '../components/DateInput.jsx';
+import FlowStrip, { lineSteps } from '../components/FlowStrip.jsx';
+import SidePanel from '../components/SidePanel.jsx';
 import CostingSearch from './CostingSearch.jsx';
 import ItemPicker from './ItemPicker.jsx';
 
@@ -49,7 +54,7 @@ const blankLine = (section, inr, from = {}) => ({
   processRate: '', rate: '', currencyId: inr ? String(inr.id) : '', exchangeRate: '1', ...from
 });
 
-export default function Costing({ active, session }) {
+export default function Costing({ active, session, onGo, request }) {
   const allowed = session?.permissions?.['order.costing'] || [];
   const canApprove = allowed.includes('approve');
   // Functions and reports the owner gave this client (hidden when switched off)
@@ -61,9 +66,10 @@ export default function Costing({ active, session }) {
   const [header, setHeader] = useState(blankHeader());
   const [lines, setLines] = useState([]);
   const [tab, setTab] = useState('fabric');             // section whose lines are shown
-  const [more, setMore] = useState(false);               // show the less-used header fields
   const [picker, setPicker] = useState(null);            // section whose item picker is open
+  const [editDetails, setEditDetails] = useState(false);  // saved costing: show all detail fields
   const [findOpen, setFindOpen] = useState(false);
+  const [flow, setFlow] = useState(null);
   const [viewing, setViewing] = useState(null);          // an older revision shown read-only
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -71,6 +77,21 @@ export default function Costing({ active, session }) {
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => { api('/costing/lookups').then(setLookups).catch(e => setLoadError(e.message)); }, []);
+
+  // Flow strip when the costing is for an order line (reloads after save)
+  useEffect(() => {
+    if (!header.orderLineId) { setFlow(null); return undefined; }
+    let stop = false;
+    api(`/links/order-line/${header.orderLineId}`).then(f => { if (!stop) setFlow(f); }).catch(() => { if (!stop) setFlow(null); });
+    return () => { stop = true; };
+  }, [header.orderLineId, saved]);
+
+  // Opened from another screen: a costing, or a new costing for an order line
+  useEffect(() => {
+    if (!request || !lookups) return;
+    if (request.costingId) openCosting(request.costingId);
+    else if (request.newForLine) { startNew(); setTimeout(() => pickOrder(String(request.newForLine)), 0); }
+  }, [request?.n, lookups]); // eslint-disable-line react-hooks/exhaustive-deps
   const inr = lookups?.currencies.find(c => c.code === 'INR');
 
   const readOnly = !!viewing;
@@ -135,7 +156,7 @@ export default function Costing({ active, session }) {
 
   function startNew() {
     if (dirty && !window.confirm('Discard the changes on this screen and start a new costing?')) return;
-    setSaved(null); setViewing(null); setHeader(blankHeader()); setLines([]); setTab('fabric');
+    setSaved(null); setViewing(null); setHeader(blankHeader()); setLines([]); setTab('fabric'); setEditDetails(false);
     setError(''); setMessage(''); setDirty(false);
   }
 
@@ -143,7 +164,8 @@ export default function Costing({ active, session }) {
     if (dirty && !window.confirm('Discard the changes on this screen and open the selected costing?')) return;
     try {
       loadCosting(await api(`/costing/${id}`));
-      setFindOpen(false); setError(''); setMessage('');
+      setEditDetails(false); setFindOpen(false);
+      setError(''); setMessage('');
     } catch (e) { setError(e.message); setFindOpen(false); }
   }
 
@@ -180,7 +202,7 @@ export default function Costing({ active, session }) {
     try {
       await api(`/costing/${saved.id}`, { method: 'DELETE' });
       const no = saved.costingNo;
-      setDirty(false); setSaved(null); setViewing(null); setHeader(blankHeader()); setLines([]); setTab('fabric');
+      setDirty(false); setSaved(null); setViewing(null); setHeader(blankHeader()); setLines([]); setTab('fabric'); setEditDetails(false);
       setError(''); setMessage(`Costing ${no} deleted.`);
     } catch (e) { setError(e.message); }
   }
@@ -200,6 +222,11 @@ export default function Costing({ active, session }) {
   if (loadError) return <div className="screen"><div className="alert alert-error">{loadError}</div></div>;
   if (!lookups) return <div className="screen"><p className="hint">Loading costing…</p></div>;
 
+  const buyer = lookups.buyers.find(b => String(b.id) === header.buyerId);
+  const style = lookups.styles.find(x => String(x.id) === header.styleId);
+  const orderLine = lookups.orderLines.find(o => String(o.id) === header.orderLineId);
+
+
   // Which types can be picked: Final -> only Actual; Actual stays Actual; Final needs Approve permission
   const typeAllowed = (t) => {
     if (readOnly) return false;
@@ -216,37 +243,34 @@ export default function Costing({ active, session }) {
     </select>
   );
 
+  const sheet = SECTIONS.find(x => x.key === tab);
+  const secLines = lines.filter(l => l.section === tab);
+  const material = MATERIAL.includes(tab);
+  const showForm = !saved || editDetails;
+  const typeLabel = TYPE_NAMES[header.type];
+  const summary = [buyer?.name, style && `Style ${style.code}`, lookups.colours.find(c => String(c.id) === header.colourId)?.name,
+    header.orderQty && `${qty(header.orderQty)} pcs`, header.shipMode && (header.shipMode === 'air' ? 'By air' : 'By sea'),
+    currency && `${currency.code}${currency.code !== 'INR' && rate > 0 ? ` @ ${money(rate)}` : ''}`].filter(Boolean).join(' · ');
+
   return (
     <div className="screen costing-screen">
       {findOpen && <CostingSearch onOpen={openCosting} onClose={() => setFindOpen(false)} />}
       {picker && <ItemPicker section={picker} canCreateItem={canCreateItem} onClose={() => setPicker(null)} onAdd={(list) => { addLines(picker, list); setPicker(null); }} />}
 
       <div className="screen-head">
-        <h1 className="screen-title">Costing{saved && <span className="doc-no">{saved.costingNo}</span>}</h1>
+        <h1 className="screen-title">{saved ? saved.costingNo : 'New costing'}</h1>
         <span className={`chip ${status[1]}`}>{status[0]}</span>
-        <span className="hint" style={{ marginLeft: 'auto' }}>
-          {saved ? `${saved.costingNo} · Revision ${viewing || saved.revision} · ${fmtDate(saved.costingDate)}` : <>Fields marked <span className="req">*</span> are required</>}
-        </span>
       </div>
-
       <div className="toolbar">
-        <button type="button" className="tb" onClick={startNew}>+ New (F2)</button>
-        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search (F3)</button>
-        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : 'Save (Ctrl+S)'}</button>
-        {has('order.costing.delete') && (
-          <button type="button" className="tb" onClick={remove} disabled={!saved || viewing || saved.type === 'final' || !allowed.includes('edit')}
-            title={saved?.type === 'final' ? 'A Final costing can\'t be deleted. Save it as Actual first.' : 'Delete this costing'}>Delete</button>
+        <button type="button" className="tb" onClick={startNew}>+ New <kbd className="tb-kbd">F2</kbd></button>
+        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search <kbd className="tb-kbd">F3</kbd></button>
+        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
+        <span style={{ marginLeft: 'auto' }} />
+        {has('order.costing.print') && <button type="button" className="tb tb-soon" title="Coming in a later phase">Print</button>}
+        {has('order.costing.delete') && saved && (
+          <button type="button" className="tb" onClick={remove} disabled={viewing || saved.type === 'final' || !allowed.includes('edit')}
+            title={saved.type === 'final' ? 'A Final costing can\'t be deleted. Save it as Actual first.' : 'Delete this costing'}>Delete</button>
         )}
-        {saved && has('order.costing.revisions') && (
-          <select className="tb tb-select" aria-label="Revisions" value={viewing || saved.revision} onChange={e => viewRevision(Number(e.target.value))}>
-            {saved.revisions.map(r => (
-              <option key={r.revision} value={r.revision}>
-                Revision {r.revision}{r.revision === saved.revision ? ' (latest)' : ''} · {new Date(r.savedAt).toLocaleDateString('en-IN')} · {r.savedBy}
-              </option>
-            ))}
-          </select>
-        )}
-        {has('order.costing.print') && <button type="button" className="tb tb-soon" style={{ marginLeft: 'auto' }} title="Coming in a later phase">Print</button>}
       </div>
 
       {viewing && (
@@ -257,120 +281,141 @@ export default function Costing({ active, session }) {
       {error && <div className="alert alert-error" role="alert">{error}</div>}
       {message && <div className="alert alert-success" role="status">{message}</div>}
 
-      <section className="panel">
-        <div className="panel-head">COSTING DETAILS</div>
-        <div className="form-grid cost-head">
-          <label className="f" title="Initial: first costing. Final: shows in BOM (needs Approve). Actual: a closed Final costing; only Actual can be deleted.">
-            <span>Costing type <span className="req">*</span></span>
-            <select className="inp" disabled={readOnly} value={header.type} onChange={e => setH({ type: e.target.value })}>
-              {['initial', 'final', 'actual'].map(t => (
-                <option key={t} value={t} disabled={!typeAllowed(t) && header.type !== t}>
-                  {TYPE_NAMES[t]} costing{t === 'final' && !canApprove ? ' (needs Approve)' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="f"><span>Buyer <span className="req">*</span></span>{sel('buyerId', lookups.buyers.map(b => ({ id: b.id, label: b.name })), 'buyer')}</label>
-          <label className="f" title="Optional. Picking an order fills style, colour, size range, qty, ship mode and delivery date"><span>Order no.</span>
-            {sel('orderLineId', lookups.orderLines.map(o => ({ id: o.id, label: o.orderNo })), 'order', { onPick: pickOrder, placeholder: 'No order (style costing)' })}
-          </label>
-          <label className="f"><span>Style no. <span className="req">*</span></span>
-            {sel('styleId', lookups.styles.map(s => ({ id: s.id, label: `${s.code} · ${s.name}` })), 'style', { disabled: !!header.orderLineId })}
-          </label>
-          <label className="f"><span>Colour</span>{sel('colourId', lookups.colours.map(c => ({ id: c.id, label: c.name })), 'colour')}</label>
+      {flow && <FlowStrip steps={lineSteps(flow, 'costing', onGo)} />}
 
-          <label className="f"><span>Size range</span>{sel('sizeRangeId', lookups.sizeRanges.map(s => ({ id: s.id, label: s.name })), 'size range')}</label>
-          <label className="f" title={header.orderLineId ? 'Comes from the order' : 'Pieces this costing is for'}><span>Order qty <span className="req">*</span></span>
-            {header.orderLineId || readOnly ? <span className="ro">{header.orderQty ? qty(header.orderQty) : '—'} pcs</span>
-              : <input className="inp" inputMode="numeric" value={header.orderQty} onChange={e => setH({ orderQty: e.target.value.replace(/[^\d]/g, '') })} />}
-          </label>
-          <label className="f"><span>Ship mode <span className="req">*</span></span>
-            <select className="inp" disabled={readOnly} value={header.shipMode} onChange={e => setH({ shipMode: e.target.value })}>
-              <option value="">Select</option><option value="sea">By sea</option><option value="air">By air</option>
-            </select>
-          </label>
-          <label className="f"><span>Delivery date</span>
-            {readOnly ? <span className="ro">{fmtDate(header.deliveryDate)}</span>
-              : <DateInput ariaLabel="Delivery date" value={header.deliveryDate} onChange={v => setH({ deliveryDate: v })} />}
-          </label>
-          <label className="f" title="Currency the buyer pays in"><span>Currency <span className="req">*</span></span>
-            {sel('currencyId', lookups.currencies.map(c => ({ id: c.id, label: `${c.code} · ${c.name}` })), 'currency', { onPick: pickCurrency })}
-          </label>
-          <label className="f" title="1 unit of the currency in rupees"><span>Conversion rate <span className="req">*</span></span>
-            <input className="inp num-inp" inputMode="decimal" disabled={readOnly} value={header.conversionRate} onChange={e => setH({ conversionRate: e.target.value })} />
-          </label>
-
-          <label className="f" title="Cost of one garment, worked out from all sections"><span>Base amount (1 pc)</span>
-            <span className="ro">₹ {money(totals.base)}{currency && currency.code !== 'INR' && rate > 0 ? ` · ${currency.code} ${(totals.base / rate).toFixed(2)}` : ''}</span>
-          </label>
-          <label className="f" title="Base amount × order qty"><span>Total amount</span>
-            <span className="ro">₹ {money(totals.total)}{currency && currency.code !== 'INR' && rate > 0 ? ` · ${currency.code} ${(totals.total / rate).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}</span>
-          </label>
-          <button type="button" className="more-btn" aria-expanded={more} onClick={() => setMore(m => !m)}>
-            {more ? '− Fewer details' : `+ More details${header.description || header.seasonId ? ' (filled)' : ''}`}
-          </button>
-          {more && (
-            <>
-            <div className="f"><span>Season / Year</span>
-              <div className="pair">
-                {sel('seasonId', lookups.seasons.map(s => ({ id: s.id, label: s.name })), 'season', { placeholder: 'Season' })}
-                {sel('year', lookups.years.map(y => ({ id: y, label: String(y) })), 'year', { placeholder: 'Year' })}
-              </div>
+      <div className="page-cols">
+        <div className="page-main">
+          <section className="panel">
+            <div className="panel-head panel-head-row">
+              <span>Costing details {!showForm && summary && <span className="muted-normal">{summary}</span>}</span>
+              {saved && !viewing && (
+                <button type="button" className="link-btn" onClick={() => setEditDetails(e => !e)}>{editDetails ? 'Show summary' : 'Edit details'}</button>
+              )}
             </div>
-            <label className="f span-row"><span>Description</span>
-              <input className="inp" disabled={readOnly} maxLength={500} value={header.description} onChange={e => setH({ description: e.target.value })} placeholder="e.g. First costing as per tech pack" />
-            </label>
-            </>
-          )}
-        </div>
-      </section>
+            {!showForm ? (
+              <div className="form-grid cost-sum">
+                <label className="f"><span>Costing type</span><span className="ro">{typeLabel} costing</span></label>
+                <label className="f"><span>Base amount (1 pc)</span><span className="ro">₹{money(totals.base)}{currency && currency.code !== 'INR' && rate > 0 ? ` · ${currency.code} ${(totals.base / rate).toFixed(2)}` : ''}</span></label>
+                <label className="f"><span>Total amount</span><span className="ro">₹{money(totals.total)}</span></label>
+                <label className="f"><span>Delivery</span><span className="ro">{fmtDate(header.deliveryDate)}</span></label>
+                <label className="f"><span>Season</span><span className="ro">{[lookups.seasons.find(x => String(x.id) === header.seasonId)?.name, header.year].filter(Boolean).join(' ') || '—'}</span></label>
+              </div>
+            ) : (
+              <div className="form-grid cost-head">
+                <label className="f" title="Initial: first costing. Final: shows in BOM (needs Approve). Actual: a closed Final costing; only Actual can be deleted.">
+                  <span>Costing type <span className="req">*</span></span>
+                  <select className="inp" disabled={readOnly} value={header.type} onChange={e => setH({ type: e.target.value })}>
+                    {['initial', 'final', 'actual'].map(t => (
+                      <option key={t} value={t} disabled={!typeAllowed(t) && header.type !== t}>
+                        {TYPE_NAMES[t]} costing{t === 'final' && !canApprove ? ' (needs Approve)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="f"><span>Buyer <span className="req">*</span></span>{sel('buyerId', lookups.buyers.map(b => ({ id: b.id, label: b.name })), 'buyer')}</label>
+                <label className="f" title="Optional. Picking an order fills style, colour, size range, qty, ship mode and delivery date"><span>Order no.</span>
+                  {sel('orderLineId', lookups.orderLines.map(o => ({ id: o.id, label: o.orderNo })), 'order', { onPick: pickOrder, placeholder: 'No order (style costing)' })}
+                </label>
+                <label className="f"><span>Style no. <span className="req">*</span></span>
+                  {sel('styleId', lookups.styles.map(x => ({ id: x.id, label: `${x.code} · ${x.name}` })), 'style', { disabled: !!header.orderLineId })}
+                </label>
+                <label className="f"><span>Colour</span>{sel('colourId', lookups.colours.map(c => ({ id: c.id, label: c.name })), 'colour')}</label>
+                <label className="f"><span>Size range</span>{sel('sizeRangeId', lookups.sizeRanges.map(x => ({ id: x.id, label: x.name })), 'size range')}</label>
+                <label className="f" title={header.orderLineId ? 'Comes from the order' : 'Pieces this costing is for'}><span>Order qty <span className="req">*</span></span>
+                  {header.orderLineId || readOnly ? <span className="ro">{header.orderQty ? qty(header.orderQty) : '—'} pcs</span>
+                    : <input className="inp" inputMode="numeric" value={header.orderQty} onChange={e => setH({ orderQty: e.target.value.replace(/[^\d]/g, '') })} />}
+                </label>
+                <label className="f"><span>Ship mode <span className="req">*</span></span>
+                  <select className="inp" disabled={readOnly} value={header.shipMode} onChange={e => setH({ shipMode: e.target.value })}>
+                    <option value="">Select</option><option value="sea">By sea</option><option value="air">By air</option>
+                  </select>
+                </label>
+                <label className="f"><span>Delivery date</span>
+                  {readOnly ? <span className="ro">{fmtDate(header.deliveryDate)}</span>
+                    : <DateInput ariaLabel="Delivery date" value={header.deliveryDate} onChange={v => setH({ deliveryDate: v })} />}
+                </label>
+                <label className="f" title="Currency the buyer pays in"><span>Currency <span className="req">*</span></span>
+                  {sel('currencyId', lookups.currencies.map(c => ({ id: c.id, label: `${c.code} · ${c.name}` })), 'currency', { onPick: pickCurrency })}
+                </label>
+                <label className="f" title="1 unit of the currency in rupees"><span>Conversion rate <span className="req">*</span></span>
+                  <input className="inp num-inp" inputMode="decimal" disabled={readOnly} value={header.conversionRate} onChange={e => setH({ conversionRate: e.target.value })} />
+                </label>
+                <div className="f"><span>Season / Year</span>
+                  <div className="pair">
+                    {sel('seasonId', lookups.seasons.map(x => ({ id: x.id, label: x.name })), 'season', { placeholder: 'Season' })}
+                    {sel('year', lookups.years.map(y => ({ id: y, label: String(y) })), 'year', { placeholder: 'Year' })}
+                  </div>
+                </div>
+                <label className="f" title="Cost of one garment, worked out from all sections"><span>Base amount (1 pc)</span>
+                  <span className="ro">₹ {money(totals.base)}{currency && currency.code !== 'INR' && rate > 0 ? ` · ${currency.code} ${(totals.base / rate).toFixed(2)}` : ''}</span>
+                </label>
+                <label className="f" title="Base amount × order qty"><span>Total amount</span><span className="ro">₹ {money(totals.total)}</span></label>
+                <label className="f span-row"><span>Description</span>
+                  <input className="inp" disabled={readOnly} maxLength={500} value={header.description} onChange={e => setH({ description: e.target.value })} placeholder="e.g. First costing as per tech pack" />
+                </label>
+              </div>
+            )}
+          </section>
 
-      <div className="cost-cards" role="tablist" aria-label="Cost sections">
-        {SECTIONS.map(s => {
-          const count = lines.filter(l => l.section === s.key).length;
-          const material = MATERIAL.includes(s.key);
-          const share = s.key !== 'other_receivable' && totals.gross > 0 ? Math.round((totals.secs[s.key] / totals.gross) * 100) : null;
-          return (
-            <button key={s.key} type="button" role="tab" aria-selected={tab === s.key} className={`cost-card ${tab === s.key ? 'on' : ''}`}
-              style={{ '--c': s.colour }} onClick={() => setTab(s.key)}>
-              <span>{s.name}</span>
-              <b>{s.key === 'other_receivable' ? '− ' : ''}{money(totals.secs[s.key])}</b>
-              <small>
-                {count ? `${count} ${material ? 'item' : 'line'}${count === 1 ? '' : 's'}` : material ? 'no items' : 'no lines'}
-                {s.key === 'other_receivable' ? ' · taken off' : share !== null && count ? ` · ${share}%` : ''}
-              </small>
-            </button>
-          );
-        })}
-      </div>
+          <div className="cost-cards" role="tablist" aria-label="Cost sections">
+            {SECTIONS.map(x => {
+              const count = lines.filter(l => l.section === x.key).length;
+              const mat = MATERIAL.includes(x.key);
+              const share = x.key !== 'other_receivable' && totals.gross > 0 ? Math.round((totals.secs[x.key] / totals.gross) * 100) : null;
+              return (
+                <button key={x.key} type="button" role="tab" aria-selected={tab === x.key} className={`cost-card ${tab === x.key ? 'on' : ''}`}
+                  style={{ '--c': x.colour }} onClick={() => setTab(x.key)}>
+                  <span>{x.name}</span>
+                  <b>{x.key === 'other_receivable' ? '− ' : ''}₹{money(totals.secs[x.key])}{share !== null && count ? <em>{share}%</em> : null}</b>
+                  <small>
+                    {count ? `${count} ${mat ? 'item' : 'line'}${count === 1 ? '' : 's'}` : mat ? 'no items' : 'no lines'}
+                    {x.key === 'other_receivable' ? ' · taken off' : ''}
+                  </small>
+                </button>
+              );
+            })}
+          </div>
 
-      {(() => {
-        const s = SECTIONS.find(x => x.key === tab);
-        const secLines = lines.filter(l => l.section === tab);
-        const material = MATERIAL.includes(tab);
-        return (
           <section className="panel cost-lines">
             <div className="cost-lines-head">
-              <b>{s.name}</b>
+              <b>{sheet.name}</b>
               <span className="hint">
                 {secLines.length} {material ? 'item' : 'line'}{secLines.length === 1 ? '' : 's'} · ₹ {money(totals.secs[tab])} per garment
                 {tab === 'other_receivable' ? ' · taken off the base amount' : ''}
               </span>
               {!readOnly && (
-                <button type="button" className="tb tb-primary" style={{ marginLeft: 'auto' }}
+                <button type="button" className="tb" style={{ marginLeft: 'auto' }}
                   onClick={() => (material ? setPicker(tab) : addLines(tab, [{}]))}>{material ? '+ Add items' : '+ Add line'}</button>
               )}
             </div>
             <div className="grid-scroll">
               {secLines.length === 0
-                ? <p className="empty-row">{material ? `No ${s.name.toLowerCase()} items yet. Click "+ Add items".` : 'No lines yet. Click "+ Add line".'}</p>
+                ? <p className="empty-row">{material ? `No ${sheet.name.toLowerCase()} items yet. Click "+ Add items".` : 'No lines yet. Click "+ Add line".'}</p>
                 : <SectionGrid section={tab} lines={secLines} lookups={lookups} readOnly={readOnly} onChange={setLine} onCurrency={pickLineCurrency} onRemove={removeLine} />}
             </div>
           </section>
-        );
-      })()}
-      {saved && !viewing && <p className="hint">Last saved by {saved.updatedBy} · {new Date(saved.updatedAt).toLocaleString('en-IN')}</p>}
+        </div>
 
+        <SidePanel entity={saved ? 'costing' : null} entityId={saved?.id} refreshKey={saved}
+          linked={[
+            ...(header.orderLineId ? [{ label: 'Order', value: orderLine?.orderNo || '—', tone: 'ok', onClick: () => flow && onGo('orderEntry', { orderId: flow.line.orderId }) }] : []),
+            ...(header.orderLineId ? [{ label: 'BOM', value: flow?.bom ? (flow.bom.status === 'approved' ? 'Approved' : 'Draft') : 'Not made',
+              tone: flow?.bom?.status === 'approved' ? 'ok' : 'warn', onClick: () => onGo('bom', { orderLineId: Number(header.orderLineId) }) }] : []),
+            ...(buyer ? [{ label: 'Buyer', value: buyer.name }] : [])
+          ]}>
+          {saved && has('order.costing.revisions') && (
+            <section className="side-box">
+              <h2>Revisions</h2>
+              {saved.revisions.map(r => (
+                <button key={r.revision} type="button" className={`side-row side-rev ${(viewing || saved.revision) === r.revision ? 'on' : ''}`} onClick={() => viewRevision(r.revision)}>
+                  <b>Revision {r.revision}{r.revision === saved.revision ? ' (latest)' : ''}</b>
+                  <span>{new Date(r.savedAt).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit' })} · {r.savedBy}</span>
+                </button>
+              ))}
+            </section>
+          )}
+        </SidePanel>
+      </div>
     </div>
   );
 }

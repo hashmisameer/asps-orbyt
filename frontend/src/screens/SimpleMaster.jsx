@@ -113,15 +113,15 @@ export default function SimpleMaster({ kind, active, session }) {
         <span className="hint" style={{ marginLeft: 'auto' }}>Fields marked <span className="req">*</span> are required</span>
       </div>
       <div className="toolbar">
-        <button type="button" className="tb" onClick={() => { setForm(emptyFor(cfg)); setMessage(''); setError(''); }}>+ New (F2)</button>
-        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : 'Save (Ctrl+S)'}</button>
+        <button type="button" className="tb" onClick={() => { setForm(emptyFor(cfg)); setMessage(''); setError(''); }}>+ New <kbd className="tb-kbd">F2</kbd></button>
+        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
         <input className="inp" style={{ marginLeft: 'auto', width: 260 }} placeholder={`Search ${cfg.plural}`} value={filter} onChange={e => setFilter(e.target.value)} />
       </div>
       {error && <div className="alert alert-error" role="alert">{error}</div>}
       {message && <div className="alert alert-success" role="status">{message}</div>}
 
       <section className="panel">
-        <div className="panel-head">{form.id ? `CHANGE ${cfg.title.toUpperCase()}` : `NEW ${cfg.title.toUpperCase()}`}</div>
+        <div className="panel-head">{form.id ? `Change ${cfg.title.toLowerCase()}` : `New ${cfg.title.toLowerCase()}`}</div>
         <div className="master-form">
           {cfg.fields.map(f => (
             <label key={f.key} className="f" style={{ width: f.width || 260 }} title={f.hint || undefined}>
@@ -146,7 +146,7 @@ export default function SimpleMaster({ kind, active, session }) {
       </section>
 
       <section className="panel">
-        <div className="panel-head">ALL {cfg.plural.toUpperCase()}{rows ? ` · ${rows.length}` : ''}</div>
+        <div className="panel-head">All {cfg.plural.toLowerCase()}{rows ? ` · ${rows.length}` : ''}</div>
         <table className="og master-table">
           <thead><tr>{cfg.fields.map(f => <th key={f.key} className={f.number ? 'num' : ''}>{f.label}</th>)}<th style={{ width: 90 }}>Status</th></tr></thead>
           <tbody>

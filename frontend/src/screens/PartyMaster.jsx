@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import PartySearch, { TYPE_NAMES } from './PartySearch.jsx';
+import SidePanel from '../components/SidePanel.jsx';
 
 let nextKey = 1;
 const GST_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
@@ -17,7 +18,7 @@ const blankAddress = (prev, partyName, indiaId) => ({
   countryId: prev?.countryId || indiaId || '', stateId: '', cityId: '', pincode: '', phone: '', email: '', contactPerson: '', gstCode: '', isDefault: false
 });
 
-export default function PartyMaster({ active, session, onNotice }) {
+export default function PartyMaster({ active, session, onNotice, request }) {
   const allowed = session?.permissions?.['masters.party'] || [];
   const has = (code) => Boolean(session?.permissions?.[code]);
   const [lookups, setLookups] = useState(null);
@@ -40,6 +41,19 @@ export default function PartyMaster({ active, session, onNotice }) {
       setHeader(blankHeader(l.currencies.find(c => c.code === 'INR')?.id || ''));
     }).catch(e => setLoadError(e.message));
   }, []);
+
+  // What uses this party (right-hand panel)
+  const [links, setLinks] = useState(null);
+  useEffect(() => {
+    if (!saved) { setLinks(null); return undefined; }
+    let stop = false;
+    api(`/links/party/${saved.id}`).then(l => { if (!stop) setLinks(l); }).catch(() => { if (!stop) setLinks(null); });
+    return () => { stop = true; };
+  }, [saved]);
+  // Opened from another screen (e.g. the buyer of a brand)
+  useEffect(() => {
+    if (request?.partyId && lookups) openParty(request.partyId);
+  }, [request?.n, lookups]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const canSave = saved ? allowed.includes('edit') : allowed.includes('create');
   const setH = (patch) => { setMessage(''); setDirty(true); setHeader(h => ({ ...h, ...patch })); };
@@ -180,9 +194,9 @@ export default function PartyMaster({ active, session, onNotice }) {
       </div>
 
       <div className="toolbar">
-        <button type="button" className="tb" onClick={startNew}>+ New (F2)</button>
-        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search (F3)</button>
-        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : 'Save (Ctrl+S)'}</button>
+        <button type="button" className="tb" onClick={startNew}>+ New <kbd className="tb-kbd">F2</kbd></button>
+        <button type="button" className="tb" onClick={() => setFindOpen(true)}>Search <kbd className="tb-kbd">F3</kbd></button>
+        <button type="button" className="tb tb-primary" onClick={save} disabled={busy || !canSave}>{busy ? 'Saving…' : <>Save <kbd className="tb-kbd">Ctrl S</kbd></>}</button>
         {has('masters.party.import_excel') && (
           <>
             <span className="tb-sep" aria-hidden="true" />
@@ -194,8 +208,10 @@ export default function PartyMaster({ active, session, onNotice }) {
       {error && <div className="alert alert-error" role="alert">{error}</div>}
       {message && <div className="alert alert-success" role="status">{message}</div>}
 
+      <div className="page-cols">
+      <div className="page-main">
       <section className="panel">
-        <div className="panel-head">PARTY DETAILS</div>
+        <div className="panel-head">Party details</div>
         <div className="form-grid party-head">
           <label className="f"><span>Party code <span className="req">*</span></span>
             <input className="inp" value={header.code} maxLength={20} placeholder="e.g. HM" onChange={e => setH({ code: e.target.value.toUpperCase().replace(/\s/g, '') })} />
@@ -232,7 +248,7 @@ export default function PartyMaster({ active, session, onNotice }) {
 
       <section className="panel">
         <div className="panel-head panel-head-row">
-          <span>ADDRESS DETAILS · {addresses.length}{addresses.length > 0 && ` (${typeCount('billing')} billing, ${typeCount('shipping')} shipping)`}</span>
+          <span>Addresses · {addresses.length}{addresses.length > 0 && ` (${typeCount('billing')} billing, ${typeCount('shipping')} shipping)`}</span>
           <span className="hint">Tick "Default" for the billing and the shipping address other screens should pick first</span>
         </div>
         <div className="grid-scroll party-grid">
@@ -289,6 +305,16 @@ export default function PartyMaster({ active, session, onNotice }) {
           </div>
         <p className="hint party-foot">If no address of a type is ticked as default, the first one becomes the default on save.</p>
       </section>
+      </div>
+      {saved && (
+        <SidePanel entity="parties" entityId={saved.id} refreshKey={saved}
+          linked={links ? [
+            { label: 'Brands', value: links.brands ? `${links.brands} brand${links.brands === 1 ? '' : 's'}` : '—' },
+            { label: 'Costings (as buyer)', value: links.costings || '—' },
+            { label: 'Order lines', value: links.orderLines || '—' }
+          ] : []} />
+      )}
+      </div>
     </div>
   );
 }

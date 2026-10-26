@@ -7,7 +7,7 @@ import { daysTo } from '../components/FlowStrip.jsx';
 import BomItemPicker from './BomItemPicker.jsx';
 import RecordList from '../components/RecordList.jsx';
 import Chatter from '../components/Chatter.jsx';
-import { ControlPanel, StatusBar, SmartButtons, Field, AllButton, SheetTabs } from '../components/RecordBar.jsx';
+import { ControlPanel, StatusBar, Field, AllButton, SheetTabs } from '../components/RecordBar.jsx';
 
 const STATUS = { none: ['No BOM', 'no'], draft: ['Draft', 'wr'], approved: ['Approved', 'ok'] };
 
@@ -240,13 +240,6 @@ export default function Bom({ active, session, onGo, request }) {
           )}
 
           <section className="o-sheet">
-            <SmartButtons items={[
-              { icon: '▤', value: data.order.orderNo.split('/').pop(), label: 'Order', onClick: () => flow && onGo('orderEntry', { orderId: flow.line.orderId }) },
-              { icon: '₹', value: data.finalCosting ? data.finalCosting.costingNo.split('/').pop() : 'Not made', label: 'Final costing', tone: data.finalCosting ? 'ok' : 'warn',
-                onClick: () => onGo('costing', flow?.costing ? { costingId: flow.costing.id } : { newForLine: data.order.orderLineId }) },
-              { icon: '↓', value: '—', label: 'Purchase' },
-              { icon: '≡', value: lines.length, label: lines.length === 1 ? 'Item' : 'Items' }
-            ]} />
             <div className="o-title">
               <span>BOM{approved ? ' · approved and locked' : data.bom ? ' · draft' : ' · not saved yet'}</span>
               <h1>{data.order.orderNo}</h1>
@@ -254,13 +247,18 @@ export default function Bom({ active, session, onGo, request }) {
             </div>
             <div className="o-groups">
               <div>
+                <Field label="Order no."><button type="button" className="o-link" onClick={() => flow && onGo('orderEntry', { orderId: flow.line.orderId })}>{data.order.orderNo}</button></Field>
                 <Field label="Style">{data.order.styleCode} · {data.order.styleName}</Field>
                 <Field label="Brand / colour">{data.order.brand} · {data.order.colour}</Field>
                 <Field label="Order qty">{qty(orderQty)} pcs</Field>
                 <Field label="Ex-factory">{fmtDate(data.order.exFactory)}</Field>
               </div>
               <div>
-                <Field label="Final costing" title="Items and rates come from this costing">{data.finalCosting ? `${data.finalCosting.costingNo} · ${data.finalCosting.buyer}` : 'None yet'}</Field>
+                <Field label="Final costing" title="Items and rates come from this costing">
+                  <button type="button" className="o-link" onClick={() => onGo('costing', flow?.costing ? { costingId: flow.costing.id } : { newForLine: data.order.orderLineId })}>
+                    {data.finalCosting ? `${data.finalCosting.costingNo} · ${data.finalCosting.buyer}` : 'None yet · create costing'}
+                  </button>
+                </Field>
                 <Field label="Material budget"><b>₹ {money(totals.budget)}</b></Field>
                 <Field label={approved ? 'Approved by' : 'Last saved by'}>
                   {approved ? `${data.bom.approvedBy} · ${new Date(data.bom.approvedAt).toLocaleDateString('en-IN')}` : data.bom ? data.bom.updatedBy : 'Not saved yet'}

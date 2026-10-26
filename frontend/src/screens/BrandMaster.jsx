@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import RecordList from '../components/RecordList.jsx';
 import Chatter from '../components/Chatter.jsx';
-import { ControlPanel, StatusBar, SmartButtons, Field, AllButton } from '../components/RecordBar.jsx';
+import { ControlPanel, StatusBar, Field, AllButton } from '../components/RecordBar.jsx';
 
 const blank = () => ({ code: '', name: '', buyerId: '', currencyId: '', isExport: false, isActive: true });
 
@@ -26,15 +26,6 @@ export default function BrandMaster({ active, session, onGo, request }) {
   useEffect(() => { api('/brands/lookups').then(setLookups).catch(e => setLoadError(e.message)); }, []);
   // Opened from another screen (e.g. the Brand field of an order)
   useEffect(() => { if (request?.brandId) openBrand(request.brandId); }, [request?.n]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Orders of this brand (right-hand panel)
-  const [links, setLinks] = useState(null);
-  useEffect(() => {
-    if (!saved) { setLinks(null); return undefined; }
-    let stop = false;
-    api(`/links/brand/${saved.id}`).then(l => { if (!stop) setLinks(l); }).catch(() => { if (!stop) setLinks(null); });
-    return () => { stop = true; };
-  }, [saved]);
 
   const canSave = saved ? allowed.includes('edit') : allowed.includes('create');
   const codeLocked = saved && saved.orders > 0;
@@ -144,14 +135,6 @@ export default function BrandMaster({ active, session, onGo, request }) {
           )}
 
           <section className="o-sheet">
-            <SmartButtons items={saved ? [
-              ...(buyer ? [{ icon: '◆', value: buyer.code, label: 'Buyer', onClick: () => onGo('party', { partyId: Number(form.buyerId) }) }] : []),
-              ...(links ? [
-                { icon: '▤', value: links.orders, label: 'Orders' },
-                { icon: '≡', value: links.orderLines, label: 'Order lines' },
-                { icon: '#', value: links.qty ? links.qty.toLocaleString('en-IN') : 0, label: 'Total pcs' }
-              ] : [])
-            ] : []} />
             <div className="o-title"><span>Brand{saved && !form.isActive ? ' · inactive' : ''}</span><h1>{title}</h1></div>
             <div className="o-groups">
               <div>

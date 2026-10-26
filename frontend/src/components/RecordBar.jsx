@@ -1,7 +1,6 @@
 // Pieces of the record pages (list -> form), the same on every screen:
 //   ControlPanel  breadcrumb (Orders / ORD/26-27/UTH/0011), buttons, and "3 / 14 ‹ ›" to step through the list
 //   StatusBar     action buttons on the left, the record's stages on the right (Draft › Saved › Costing final …)
-//   SmartButtons  counters at the top of the sheet (Costing 1, BOM Draft …) that open the linked record
 
 export function ControlPanel({ crumbs, children, pager }) {
   return (
@@ -39,19 +38,6 @@ export function StatusBar({ children, steps = [] }) {
   );
 }
 
-export function SmartButtons({ items }) {
-  if (!items.length) return null;
-  return (
-    <div className="o-smart">
-      {items.map(it => (
-        <button key={it.label} type="button" className={`o-smart-btn ${it.tone || ''}`} onClick={it.onClick} disabled={!it.onClick}>
-          <span className="o-smart-ic" aria-hidden="true">{it.icon}</span>
-          <span><b>{it.value}</b>{it.label}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
 
 // One label-left field of a record sheet: "Brand   Urban Thread (UTH)"
 export function Field({ label, req, title, wide, children }) {

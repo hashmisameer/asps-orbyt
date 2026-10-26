@@ -9,7 +9,7 @@ import DateInput from '../components/DateInput.jsx';
 import ItemPicker from './ItemPicker.jsx';
 import RecordList from '../components/RecordList.jsx';
 import Chatter from '../components/Chatter.jsx';
-import { ControlPanel, StatusBar, SmartButtons, Field, AllButton, SheetTabs } from '../components/RecordBar.jsx';
+import { ControlPanel, StatusBar, Field, AllButton, SheetTabs } from '../components/RecordBar.jsx';
 
 const SECTIONS = [
   { key: 'fabric', name: 'Fabric', colour: '#0F766E' },
@@ -288,13 +288,6 @@ export default function Costing({ active, session, onGo, request }) {
   const order = ['initial', 'final', 'actual'];
   const steps = order.map((t, i) => ({ label: TYPE_NAMES[t], state: i < order.indexOf(header.type) ? 'done' : t === header.type ? 'on' : '' }));
   const inCurrency = currency && currency.code !== 'INR' && rate > 0 ? ` · ${currency.code} ${(totals.base / rate).toFixed(2)}` : '';
-  const smart = [
-    ...(header.orderLineId ? [{ icon: '▤', value: orderLine?.orderNo?.split('/').pop() || '—', label: 'Order', onClick: () => flow && onGo('orderEntry', { orderId: flow.line.orderId }) }] : []),
-    ...(header.orderLineId ? [{ icon: '≡', value: flow?.bom ? (flow.bom.status === 'approved' ? 'Approved' : 'Draft') : 'Not made', label: 'BOM',
-      tone: flow?.bom?.status === 'approved' ? 'ok' : 'warn', onClick: () => onGo('bom', { orderLineId: Number(header.orderLineId) }) }] : []),
-    ...(saved && has('order.costing.revisions') ? [{ icon: '↺', value: saved.revisions.length, label: saved.revisions.length === 1 ? 'Revision' : 'Revisions', onClick: () => setSheetTab('rev') }] : []),
-    { icon: '₹', value: money(totals.base), label: 'Base per pc' }
-  ];
 
   return (
     <div className="o-page">
@@ -334,7 +327,6 @@ export default function Costing({ active, session, onGo, request }) {
           )}
 
           <section className="o-sheet">
-            <SmartButtons items={smart} />
             <div className="o-title"><span>{TYPE_NAMES[header.type]} costing</span><h1>{title}</h1></div>
             <div className="o-groups">
               <div>

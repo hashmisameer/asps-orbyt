@@ -6,7 +6,7 @@ import { api } from '../api.js';
 const TYPE_NAMES = { buyer: 'Buyer', supplier: 'Supplier', both: 'Both' };
 import RecordList from '../components/RecordList.jsx';
 import Chatter from '../components/Chatter.jsx';
-import { ControlPanel, StatusBar, SmartButtons, Field, AllButton, SheetTabs } from '../components/RecordBar.jsx';
+import { ControlPanel, StatusBar, Field, AllButton, SheetTabs } from '../components/RecordBar.jsx';
 
 let nextKey = 1;
 const GST_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
@@ -48,14 +48,6 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
     }).catch(e => setLoadError(e.message));
   }, []);
 
-  // What uses this party (right-hand panel)
-  const [links, setLinks] = useState(null);
-  useEffect(() => {
-    if (!saved) { setLinks(null); return undefined; }
-    let stop = false;
-    api(`/links/party/${saved.id}`).then(l => { if (!stop) setLinks(l); }).catch(() => { if (!stop) setLinks(null); });
-    return () => { stop = true; };
-  }, [saved]);
   // Opened from another screen (e.g. the buyer of a brand)
   useEffect(() => {
     if (request?.partyId && lookups) openParty(request.partyId);
@@ -248,12 +240,6 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
           )}
 
           <section className="o-sheet">
-            <SmartButtons items={saved && links ? [
-              { icon: '◆', value: links.brands, label: links.brands === 1 ? 'Brand' : 'Brands' },
-              { icon: '₹', value: links.costings, label: 'Costings' },
-              { icon: '▤', value: links.orderLines, label: 'Order lines' },
-              { icon: '⌂', value: addresses.length, label: addresses.length === 1 ? 'Address' : 'Addresses', onClick: () => setTab('addr') }
-            ] : []} />
             <div className="o-title"><span>Party{saved && !header.isActive ? ' · inactive' : ''}</span><h1>{title}</h1></div>
             <div className="o-groups">
               <div>

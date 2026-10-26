@@ -3,7 +3,7 @@
 // Lines: one row per order no., with dispatch mode, buyer PO, colour, size range, size-wise qty and dates.
 // After saving, only buyer PO no., size range and quantities can change.
 import { daysTo } from '../components/FlowStrip.jsx';
-import { ControlPanel, StatusBar, SmartButtons } from '../components/RecordBar.jsx';
+import { ControlPanel, StatusBar } from '../components/RecordBar.jsx';
 import Chatter from '../components/Chatter.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
@@ -311,14 +311,6 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   const at = order ? listIds.indexOf(order.id) : -1;
   const title = order ? (order.lines.length > 1 ? `${order.lines[0].orderNo} – ${order.lines[order.lines.length - 1].orderNo.split('/').pop()}` : order.lines[0]?.orderNo) : 'New order';
   const openCosting = (l) => onGo('costing', l.costing ? { costingId: l.costing.id } : { newForLine: l.id });
-  const smart = order && flow ? [
-    { icon: '₹', value: `${st.finals} / ${st.n}`, label: 'Final costing', tone: st.finals < st.n ? 'warn' : 'ok',
-      onClick: () => openCosting(st.firstNoCost || flow.lines[0]) },
-    { icon: '≡', value: `${st.approved} / ${st.n}`, label: 'BOM approved', tone: st.approved < st.n ? 'warn' : 'ok',
-      onClick: () => onGo('bom', { orderLineId: (st.firstNoBom || flow.lines[0]).id }) },
-    { icon: '↓', value: '—', label: 'Purchase' },
-    { icon: '▤', value: st.n, label: st.n === 1 ? 'Line' : 'Lines', onClick: () => setTab('lines') }
-  ] : [];
   const cell = (label, value, opts = {}) => (
     <div className={`o-row ${opts.wide ? 'wide' : ''}`} title={opts.title}>
       <span className="o-lbl">{label}{opts.req && !order && <span className="req"> *</span>}</span>
@@ -365,7 +357,6 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
           {tried && liveProblems.length > 0 && <div className="alert alert-error" role="alert">Fix before saving · {liveProblems.join(' · ')}</div>}
 
           <section className="o-sheet">
-            <SmartButtons items={smart} />
             <div className="o-title">
               <span>Order</span>
               <h1>{title}</h1>

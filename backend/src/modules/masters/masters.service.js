@@ -41,6 +41,14 @@ export const MASTERS = {
       { key: 'name', column: 'name', label: 'Size range', required: true, max: 40, unique: true }
     ]
   },
+  payment_term: {
+    table: 'payment_terms', feature: 'masters.basic', label: 'Payment term', order: 'days NULLS LAST, name',
+    usage: '(SELECT COUNT(*) FROM parties x WHERE x.payment_term_id = t.id)',
+    fields: [
+      { key: 'name', column: 'name', label: 'Payment term', required: true, max: 60, unique: true },
+      { key: 'days', column: 'days', label: 'Days', number: true, integer: true, zeroOk: true }
+    ]
+  },
   uom: {
     table: 'uoms', feature: 'masters.basic', label: 'UOM', order: 'code',
     usage: '(SELECT COUNT(*) FROM items x WHERE x.company_id = t.company_id AND upper(x.uom) = upper(t.code))'
@@ -221,7 +229,7 @@ async function read(m, companyId, body, id = null, db = poolDb) {
     if (f.number) {
       if (empty && !f.required) { values[f.column] = null; continue; }
       v = Number(String(v ?? '').replace(/,/g, ''));
-      if (!Number.isFinite(v) || v <= 0) { problems.push(`${f.label.toLowerCase()} (a number above 0)`); continue; }
+      if (!Number.isFinite(v) || v < 0 || (v === 0 && !f.zeroOk)) { problems.push(`${f.label.toLowerCase()} (a number above 0)`); continue; }
       if (f.integer && !Number.isInteger(v)) { problems.push(`${f.label.toLowerCase()} (a whole number)`); continue; }
     } else if (f.ref) {
       if (empty) { if (f.required) problems.push(f.label.toLowerCase()); else values[f.column] = null; continue; }

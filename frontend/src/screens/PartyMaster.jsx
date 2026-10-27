@@ -12,12 +12,16 @@ let nextKey = 1;
 const GST_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const NEW = '__new';
 
+const PAN_RE = /^[A-Z]{5}\d{4}[A-Z]$/;
 const blankHeader = (inrId = '') => ({
-  code: '', name: '', type: '', gstCode: '', currencyId: inrId, isExport: false, generalTypeMapping: false, isActive: true
+  code: '', name: '', type: '', gstCode: '', currencyId: inrId, isExport: false, generalTypeMapping: false, isActive: true,
+  pan: '', paymentTermId: '', creditLimit: '', applyGst: false, holdPayment: false, holdReason: ''
 });
+const blankContact = () => ({ key: nextKey++, name: '', designation: '', phone: '', email: '' });
 const blankAddress = (prev, partyName, indiaId) => ({
   key: nextKey++, type: prev ? 'shipping' : 'billing', name: prev?.name || partyName || '', address1: '', address2: '', address3: '',
-  countryId: prev?.countryId || indiaId || '', stateId: '', cityId: '', pincode: '', phone: '', email: '', contactPerson: '', gstCode: '', isDefault: false
+  countryId: prev?.countryId || indiaId || '', stateId: '', cityId: '', pincode: '', phone: '', email: '', contactPerson: '', gstCode: '', isDefault: false,
+  distanceKm: ''
 });
 
 export default function PartyMaster({ active, session, onNotice, onGo, request }) {
@@ -28,6 +32,7 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
   const [saved, setSaved] = useState(null);           // party as last saved (null = new)
   const [header, setHeader] = useState(blankHeader());
   const [addresses, setAddresses] = useState([]);
+  const [contacts, setContacts] = useState([]);       // contact persons of the party
   const [adding, setAdding] = useState(null);         // { key, kind: 'city' | 'state', text } while typing a new place
   const [mode, setMode] = useState(() => (allowed.includes('create') ? 'form' : 'list')); // opens on a new party; 'list' = All parties
   const [listState, setListState] = useState({ search: '', filter: '' });
@@ -54,24 +59,27 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
 
   const canSave = saved ? allowed.includes('edit') : allowed.includes('create');
   const setH = (patch) => { setMessage(''); setDirty(true); setHeader(h => ({ ...h, ...patch })); };
+  const setC = (key, patch) => { setMessage(''); setDirty(true); setContacts(cs => cs.map(c => (c.key === key ? { ...c, ...patch } : c))); };
   const setA = (key, patch) => { setMessage(''); setDirty(true); setAddresses(as => as.map(a => (a.key === key ? { ...a, ...patch } : a))); };
 
   function startNew() {
     if (dirty && !window.confirm('Discard the changes on this screen?')) return;
-    setSaved(null); setHeader(blankHeader(inr?.id || '')); setAddresses([]); setError(''); setMessage(''); setDirty(false);
+    setSaved(null); setHeader(blankHeader(inr?.id || '')); setAddresses([]); setContacts([]); setError(''); setMessage(''); setDirty(false);
     setTab('addr'); setMode('form');
   }
   function backToList() {
     if (dirty && !window.confirm('Discard the changes on this screen and go back to the list?')) return;
     setLastOpened(saved?.id || null);
-    setSaved(null); setHeader(blankHeader(inr?.id || '')); setAddresses([]); setError(''); setMessage(''); setDirty(false);
+    setSaved(null); setHeader(blankHeader(inr?.id || '')); setAddresses([]); setContacts([]); setError(''); setMessage(''); setDirty(false);
     setMode('list');
   }
   function load(p) {
     setSaved(p);
     setHeader({ code: p.code, name: p.name, type: p.type, gstCode: p.gstCode, currencyId: p.currencyId,
-      isExport: p.isExport, generalTypeMapping: p.generalTypeMapping, isActive: p.isActive });
+      isExport: p.isExport, generalTypeMapping: p.generalTypeMapping, isActive: p.isActive,
+      pan: p.pan, paymentTermId: p.paymentTermId, creditLimit: p.creditLimit, applyGst: p.applyGst, holdPayment: p.holdPayment, holdReason: p.holdReason });
     setAddresses(p.addresses.map(a => ({ ...a, key: nextKey++ })));
+    setContacts(p.contacts.map(c => ({ ...c, key: nextKey++ })));
     setDirty(false);
   }
   async function openParty(id) {
@@ -84,7 +92,7 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
     if (!canSave || busy) return;
     setError(''); setMessage(''); setBusy(true);
     try {
-      const body = { ...header, addresses: addresses.map(({ key, ...a }) => a) };
+      const body = { ...header, addresses: addresses.map(({ key, ...a }) => a), contacts: contacts.map(({ key, ...c }) => c) };
       const p = saved ? await api(`/parties/${saved.id}`, { method: 'PUT', body }) : await api('/parties', { method: 'POST', body });
       load(p);
       setMessage(saved ? `Party ${p.code} saved.` : `Party ${p.code} created.`);
@@ -114,6 +122,8 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
     setH({ isExport: on, ...(on && header.currencyId === inr?.id && usd ? { currencyId: usd.id } : {}) });
   }
   const headerGstBad = header.gstCode && !GST_RE.test(header.gstCode);
+  const panFromGst = GST_RE.test(header.gstCode || '') ? header.gstCode.slice(2, 12) : '';
+  const panBad = header.pan && (!PAN_RE.test(header.pan) || (panFromGst && header.pan !== panFromGst));
 
   // ---------- address helpers ----------
   const statesOf = (countryId) => lookups.states.filter(s => s.countryId === countryId);
@@ -252,6 +262,16 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
                     {Object.entries(TYPE_NAMES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </Field>
+                <Field label="Payment terms" title="Made in Basic masters › Payment terms">
+                  <select aria-label="Payment terms" className="inp" value={header.paymentTermId} onChange={e => setH({ paymentTermId: e.target.value })}>
+                    <option value="">Select payment terms</option>
+                    {lookups.paymentTerms.filter(t => t.isActive || t.id === header.paymentTermId).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Credit limit" title="How much this party may owe at a time, in its currency">
+                  <input aria-label="Credit limit" className="inp" inputMode="decimal" placeholder="e.g. 500000" value={header.creditLimit}
+                    onChange={e => setH({ creditLimit: e.target.value.replace(/[^\d.]/g, '') })} />
+                </Field>
               </div>
               <div>
                 <Field label="Currency" req>
@@ -264,19 +284,34 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
                   <input aria-label="GST code" className={`inp ${headerGstBad ? 'bad' : ''}`} value={header.gstCode} maxLength={15} placeholder="15 characters, e.g. 09AAACA1234F1Z5"
                     onChange={e => setH({ gstCode: e.target.value.toUpperCase().replace(/\s/g, '') })} />
                 </Field>
+                <Field label="PAN number" title={panFromGst ? `Taken from the GST code when left empty (${panFromGst})` : '10 characters, e.g. AAACA1234F'}>
+                  <input aria-label="PAN number" className={`inp ${panBad ? 'bad' : ''}`} value={header.pan} maxLength={10} placeholder={panFromGst || 'e.g. AAACA1234F'}
+                    onChange={e => setH({ pan: e.target.value.toUpperCase().replace(/\s/g, '') })} />
+                </Field>
                 <Field label="Options">
                   <div className="o-checks">
                     <label><input type="checkbox" checked={header.isExport} onChange={e => toggleExport(e.target.checked)} /> Is export party</label>
+                    <label title="Charge GST on this party's purchases and sales"><input type="checkbox" checked={header.applyGst} onChange={e => setH({ applyGst: e.target.checked })} /> Apply GST</label>
                     <label><input type="checkbox" checked={header.generalTypeMapping} onChange={e => setH({ generalTypeMapping: e.target.checked })} /> General type mapping</label>
+                    <label title="Stop payments to this party for now"><input type="checkbox" checked={header.holdPayment} onChange={e => setH({ holdPayment: e.target.checked })} /> Hold payment</label>
                     {saved && <label title="Inactive parties stay in old records but can't be picked in new ones"><input type="checkbox" checked={header.isActive} onChange={e => setH({ isActive: e.target.checked })} /> Active</label>}
                   </div>
                 </Field>
+                {header.holdPayment && (
+                  <Field label="Reason for hold" req>
+                    <input aria-label="Reason for payment hold" className="inp" maxLength={300} placeholder="e.g. Quality claim pending" value={header.holdReason}
+                      onChange={e => setH({ holdReason: e.target.value })} />
+                  </Field>
+                )}
               </div>
             </div>
             {headerGstBad && <p className="field-bad">GST code has 15 characters, e.g. 09AAACA1234F1Z5</p>}
+            {panBad && <p className="field-bad">{PAN_RE.test(header.pan) ? `PAN doesn't match the GST code (its PAN part is ${panFromGst}).` : 'PAN has 10 characters, e.g. AAACA1234F'}</p>}
 
             <SheetTabs value={tab} onChange={setTab} tabs={[
               ['addr', `Addresses (${addresses.length})${addresses.length ? ` · ${typeCount('billing')} billing, ${typeCount('shipping')} shipping` : ''}`],
+              ['contacts', `Contact persons (${contacts.length})`],
+              ...(saved ? [['brands', `Brands (${saved.brands.length})`]] : []),
               ['other', 'Other info']
             ]} />
             {tab === 'addr' && (
@@ -288,12 +323,12 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
                           <th className="stick"><button type="button" className="add-btn" onClick={addAddress} aria-label="Add address" title="Add address">+</button></th><th>Address type <span className="req">*</span></th><th>Party name</th>
                           <th>Address 1 <span className="req">*</span></th><th>Address 2</th><th>Address 3</th>
                           <th>Country <span className="req">*</span></th><th>State</th><th>City</th><th>Pincode</th><th>Phone</th><th>Email</th>
-                          <th>Contact person</th><th>GST code</th><th>Default</th>
+                          <th>Contact person</th><th>GST code</th><th title="From our factory, for e-way bill">Distance (km)</th><th>Default</th>
                         </tr>
                       </thead>
                       <tbody>
                         {addresses.length === 0 && (
-                          <tr><td className="stick" /><td colSpan={14} className="empty-row party-empty">No address yet. Click + to add one.</td></tr>
+                          <tr><td className="stick" /><td colSpan={15} className="empty-row party-empty">No address yet. Click + to add one.</td></tr>
                         )}
                         {addresses.map((a, i) => {
                           const gstBad = a.gstCode && !GST_RE.test(a.gstCode);
@@ -323,6 +358,8 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
                               <td><input className="ci w-person" aria-label="Contact person" value={a.contactPerson} onChange={e => setA(a.key, { contactPerson: e.target.value })} /></td>
                               <td><input className={`ci w-gst ${gstBad ? 'inp-bad' : ''}`} aria-label="GST code" value={a.gstCode} maxLength={15} title={gstBad ? 'GST code has 15 characters' : 'State is filled from the first 2 digits'}
                                 onChange={e => setA(a.key, { gstCode: e.target.value.toUpperCase().replace(/\s/g, '') })} onBlur={() => gstBlur(a)} /></td>
+                              <td><input className="ci num w-pin" aria-label="Distance in km" inputMode="numeric" value={a.distanceKm ?? ''}
+                                onChange={e => setA(a.key, { distanceKm: e.target.value.replace(/[^\d]/g, '') })} /></td>
                               <td className="party-def">
                                 <label><input type="checkbox" checked={a.isDefault} aria-label={`Default ${a.type} address`} onChange={e => setDefault(a, e.target.checked)} />
                                   {a.isDefault && <span className="chip chip-teal">{a.type === 'billing' ? 'Billing' : 'Shipping'}</span>}</label>
@@ -334,6 +371,58 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
                     </table>
                   </div>
                 <p className="hint o-grid-hint">Click + in the header to add an address. Tick "Default" for the billing and the shipping address other screens should pick first. If none is ticked, the first one of each type becomes the default on save.</p>
+              </>
+            )}
+            {tab === 'contacts' && (
+              <>
+                <div className="grid-scroll">
+                  <table className="og o-flow-table">
+                    <thead>
+                      <tr>
+                        <th className="c-act"><button type="button" className="add-btn" aria-label="Add contact person" title="Add contact person"
+                          onClick={() => { setDirty(true); setContacts(cs => [...cs, blankContact()]); }}>+</button></th>
+                        <th>Name <span className="req">*</span></th><th>Designation</th><th>Phone</th><th>Email</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {contacts.length === 0 && <tr><td /><td colSpan={4} className="empty-row">No contact person yet. Click + to add one.</td></tr>}
+                      {contacts.map((c, i) => (
+                        <tr key={c.key}>
+                          <td className="c-act">
+                            <button type="button" className="del-btn" aria-label={`Delete contact ${i + 1}`} title="Delete contact"
+                              onClick={() => { setDirty(true); setContacts(cs => cs.filter(x => x.key !== c.key)); }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+                            </button>
+                          </td>
+                          <td><input className="ci" aria-label={`Contact ${i + 1} name`} maxLength={80} value={c.name} onChange={e => setC(c.key, { name: e.target.value })} /></td>
+                          <td><input className="ci" aria-label={`Contact ${i + 1} designation`} maxLength={60} placeholder="e.g. Merchant" value={c.designation} onChange={e => setC(c.key, { designation: e.target.value })} /></td>
+                          <td><input className="ci" aria-label={`Contact ${i + 1} phone`} maxLength={30} value={c.phone} onChange={e => setC(c.key, { phone: e.target.value })} /></td>
+                          <td><input className="ci" aria-label={`Contact ${i + 1} email`} type="email" maxLength={120} value={c.email} onChange={e => setC(c.key, { email: e.target.value })} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="hint o-grid-hint">Add everyone you deal with at this party, e.g. merchant, accounts, QA.</p>
+              </>
+            )}
+            {tab === 'brands' && saved && (
+              <>
+                <table className="og o-flow-table">
+                  <thead><tr><th>Brand code</th><th>Brand name</th><th className="num">Orders</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {saved.brands.length === 0 && <tr><td colSpan={4} className="empty-row">No brand has this party as buyer yet.</td></tr>}
+                    {saved.brands.map(b => (
+                      <tr key={b.id}>
+                        <td><button type="button" className="o-link order-no" onClick={() => onGo('brand', { brandId: b.id })}>{b.code}</button></td>
+                        <td>{b.name}</td>
+                        <td className="num">{b.orders}</td>
+                        <td><span className={`o-pill ${b.isActive ? 'ok' : 'no'}`}>{b.isActive ? 'Active' : 'Inactive'}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="hint o-grid-hint">Brands are made in Brand master, where this party is picked as the buyer. They show here to look at.</p>
               </>
             )}
             {tab === 'other' && (

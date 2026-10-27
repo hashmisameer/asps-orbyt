@@ -17,6 +17,8 @@ const KINDS = [
     cols: [{ key: 'name', label: 'Product group', max: 60, upper: true }] },
   { id: 'product_class', name: 'Product class', plural: 'product classes', hint: 'Picked on Product category (style), e.g. MEN\'S TROUSER',
     cols: [{ key: 'name', label: 'Product class', max: 60, upper: true }] },
+  { id: 'payment_term', name: 'Payment terms', plural: 'payment terms', hint: 'Picked on Party master, e.g. Within 60 days',
+    cols: [{ key: 'name', label: 'Payment term', max: 60 }, { key: 'days', label: 'Days', number: true, integer: true, optional: true, width: 140, placeholder: 'e.g. 60' }] },
   { id: 'uom', name: 'UOM', plural: 'units', hint: 'Units used on items, costing, BOM and purchase',
     cols: [{ key: 'code', label: 'Code', max: 10, upper: true, width: 140 }, { key: 'name', label: 'Name', max: 40 },
       { key: 'allowDecimals', label: 'Decimals allowed', yesNo: true, width: 170 }] },

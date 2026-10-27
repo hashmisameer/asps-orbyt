@@ -10,6 +10,9 @@ const MAX_ADDRESSES = 50;
 // GSTIN: 2-digit state code, 10-character PAN, entity number, Z, check character (e.g. 09AAACA1234F1Z5)
 const GSTIN = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+// PAN: 5 letters, 4 digits, 1 letter (e.g. AAACA1234F); it is also characters 3-12 of the GST code
+const PAN = /^[A-Z]{5}\d{4}[A-Z]$/;
+const MAX_CONTACTS = 20;
 
 const text = (v, max = 200) => {
   const t = String(v ?? '').trim();
@@ -21,13 +24,15 @@ const str = (v) => (v === null || v === undefined ? '' : String(v));
 // ---------- Dropdown lists ----------
 // Built-in states/cities plus the ones this client added
 export async function getLookups(companyId) {
-  const [currencies, countries, states, cities] = await Promise.all([
+  const [currencies, countries, states, cities, terms] = await Promise.all([
     query('SELECT id, code, name FROM currencies WHERE company_id = $1 AND is_active ORDER BY code', [companyId]),
     query('SELECT id, code, name FROM countries ORDER BY name'),
     query('SELECT id, country_id, gst_code, name FROM states WHERE company_id IS NULL OR company_id = $1 ORDER BY name', [companyId]),
-    query('SELECT id, country_id, state_id, name FROM cities WHERE company_id IS NULL OR company_id = $1 ORDER BY name', [companyId])
+    query('SELECT id, country_id, state_id, name FROM cities WHERE company_id IS NULL OR company_id = $1 ORDER BY name', [companyId]),
+    query('SELECT id, name, is_active FROM payment_terms WHERE company_id = $1 ORDER BY days NULLS LAST, name', [companyId])
   ]);
   return {
+    paymentTerms: terms.map(r => ({ id: str(r.id), name: r.name, isActive: r.is_active })),
     currencies: currencies.map(r => ({ id: str(r.id), code: r.code, name: r.name })),
     countries: countries.map(r => ({ id: str(r.id), code: r.code, name: r.name })),
     states: states.map(r => ({ id: str(r.id), countryId: str(r.country_id), gstCode: r.gst_code || '', name: r.name })),
@@ -97,15 +102,26 @@ export async function getParty(companyId, partyId) {
        FROM parties p LEFT JOIN users cu ON cu.id = p.created_by LEFT JOIN users uu ON uu.id = p.updated_by
       WHERE p.id = $1 AND p.company_id = $2`, [partyId, companyId]))[0];
   if (!p) throw new AppError(404, 'Party not found.');
-  const addresses = await query('SELECT * FROM party_addresses WHERE party_id = $1 ORDER BY sort_order', [partyId]);
+  const [addresses, contacts, brands] = await Promise.all([
+    query('SELECT * FROM party_addresses WHERE party_id = $1 ORDER BY sort_order', [partyId]),
+    query('SELECT * FROM party_contacts WHERE party_id = $1 ORDER BY sort_order', [partyId]),
+    // Brands are made in Brand master with this party as buyer; shown here only to look at
+    query(`SELECT b.id, b.initials, b.name, b.is_active, (SELECT COUNT(*) FROM orders o WHERE o.brand_id = b.id)::int AS orders
+             FROM brands b WHERE b.company_id = $1 AND b.buyer_id = $2 ORDER BY b.name`, [companyId, partyId])
+  ]);
   return {
     id: p.id, code: p.code, name: p.name, type: p.party_type, gstCode: p.gst_code || '',
     currencyId: str(p.currency_id), isExport: p.is_export, generalTypeMapping: p.general_type_mapping, isActive: p.is_active,
+    pan: p.pan || '', paymentTermId: str(p.payment_term_id), creditLimit: p.credit_limit === null ? '' : String(Number(p.credit_limit)),
+    applyGst: p.apply_gst, holdPayment: p.hold_payment, holdReason: p.hold_reason || '',
+    contacts: contacts.map(c => ({ id: c.id, name: c.name, designation: c.designation || '', phone: c.phone || '', email: c.email || '' })),
+    brands: brands.map(b => ({ id: b.id, code: b.initials, name: b.name, orders: b.orders, isActive: b.is_active })),
     updatedBy: p.updated_name || p.created_name || '', updatedAt: p.updated_at,
     addresses: addresses.map(a => ({
       id: a.id, type: a.address_type, name: a.name, address1: a.address1, address2: a.address2 || '', address3: a.address3 || '',
       countryId: str(a.country_id), stateId: str(a.state_id), cityId: str(a.city_id), pincode: a.pincode || '', phone: a.phone || '',
-      email: a.email || '', contactPerson: a.contact_person || '', gstCode: a.gst_code || '', isDefault: a.is_default
+      email: a.email || '', contactPerson: a.contact_person || '', gstCode: a.gst_code || '', isDefault: a.is_default,
+      distanceKm: a.distance_km === null ? '' : String(a.distance_km)
     }))
   };
 }
@@ -122,7 +138,13 @@ async function read(companyId, body, partyId = null) {
     currencyId: id(body.currencyId),
     isExport: body.isExport === true,
     generalTypeMapping: body.generalTypeMapping === true,
-    isActive: body.isActive !== false
+    isActive: body.isActive !== false,
+    pan: text(body.pan, 10)?.toUpperCase().replace(/\s/g, '') || null,
+    paymentTermId: id(body.paymentTermId),
+    creditLimit: String(body.creditLimit ?? '').trim() === '' ? null : Number(String(body.creditLimit).replace(/,/g, '')),
+    applyGst: body.applyGst === true,
+    holdPayment: body.holdPayment === true,
+    holdReason: text(body.holdReason, 300)
   };
   if (!h.code) problems.push('party code');
   else if (!/^[A-Z0-9/_-]{1,20}$/.test(h.code)) problems.push('party code (letters, numbers, - / _ only)');
@@ -130,6 +152,30 @@ async function read(companyId, body, partyId = null) {
   if (!PARTY_TYPES.includes(h.type)) problems.push('party type');
   if (!h.currencyId || !(await query('SELECT 1 FROM currencies WHERE id = $1 AND company_id = $2', [h.currencyId, companyId])).length) problems.push('currency');
   if (h.gstCode && !GSTIN.test(h.gstCode)) problems.push('a valid GST code (15 characters, e.g. 09AAACA1234F1Z5)');
+  // PAN: taken from the GST code when left empty; if both are given they must match
+  if (!h.pan && h.gstCode && GSTIN.test(h.gstCode)) h.pan = h.gstCode.slice(2, 12);
+  if (h.pan && !PAN.test(h.pan)) problems.push('a valid PAN number (10 characters, e.g. AAACA1234F)');
+  else if (h.pan && h.gstCode && GSTIN.test(h.gstCode) && h.gstCode.slice(2, 12) !== h.pan) {
+    wrong.push(`PAN ${h.pan} doesn't match the GST code (its PAN part is ${h.gstCode.slice(2, 12)}).`);
+  }
+  if (h.paymentTermId && !(await query('SELECT 1 FROM payment_terms WHERE id = $1 AND company_id = $2', [h.paymentTermId, companyId])).length) {
+    problems.push('a valid payment term');
+  }
+  if (h.creditLimit !== null && !(Number.isFinite(h.creditLimit) && h.creditLimit >= 0)) problems.push('credit limit (a number, 0 or more)');
+  if (h.holdPayment && !h.holdReason) problems.push('reason for payment hold');
+  if (!h.holdPayment) h.holdReason = null;
+
+  // Contact persons: empty rows are skipped; a row with anything typed needs a name
+  const contactList = Array.isArray(body.contacts) ? body.contacts : [];
+  if (contactList.length > MAX_CONTACTS) throw new AppError(400, `A party can have up to ${MAX_CONTACTS} contact persons.`);
+  const contacts = [];
+  contactList.forEach((c, i) => {
+    const r = { name: text(c.name, 80), designation: text(c.designation, 60), phone: text(c.phone, 30), email: text(c.email, 120) };
+    if (!r.name && !r.designation && !r.phone && !r.email) return;
+    if (!r.name) { problems.push(`name of contact person ${i + 1}`); return; }
+    if (r.email && !EMAIL.test(r.email)) { problems.push(`a valid email for contact person ${i + 1}`); return; }
+    contacts.push(r);
+  });
 
   const [countries, states, cities] = await Promise.all([
     query('SELECT id, code FROM countries'),
@@ -151,7 +197,8 @@ async function read(companyId, body, partyId = null) {
       type: String(a.type || ''), name: text(a.name, 150) || h.name, address1: text(a.address1), address2: text(a.address2), address3: text(a.address3),
       countryId: id(a.countryId), stateId: id(a.stateId), cityId: id(a.cityId), pincode: text(a.pincode, 12),
       phone: text(a.phone, 30), email: text(a.email, 120), contactPerson: text(a.contactPerson, 80),
-      gstCode: text(a.gstCode, 15)?.toUpperCase().replace(/\s/g, '') || null, isDefault: a.isDefault === true
+      gstCode: text(a.gstCode, 15)?.toUpperCase().replace(/\s/g, '') || null, isDefault: a.isDefault === true,
+      distanceKm: String(a.distanceKm ?? '').trim() === '' ? null : Number(a.distanceKm)
     };
     const miss = [];
     if (!ADDRESS_TYPES.includes(r.type)) miss.push('address type');
@@ -177,6 +224,7 @@ async function read(companyId, body, partyId = null) {
     }
     if (country.code === 'IN' && r.pincode && !/^\d{6}$/.test(r.pincode)) { problems.push(`a 6-digit pincode in ${row}`); return; }
     if (r.email && !EMAIL.test(r.email)) { problems.push(`a valid email in ${row}`); return; }
+    if (r.distanceKm !== null && !(Number.isInteger(r.distanceKm) && r.distanceKm >= 0)) { problems.push(`distance in km (whole number) in ${row}`); return; }
     addresses.push(r);
   });
   if (problems.length || wrong.length) {
@@ -198,7 +246,17 @@ async function read(companyId, body, partyId = null) {
   const dupName = await query('SELECT code FROM parties WHERE company_id = $1 AND lower(name) = lower($2) AND ($3::bigint IS NULL OR id <> $3)',
     [companyId, h.name, partyId]);
   if (dupName.length) throw new AppError(400, `A party named "${h.name}" already exists (${dupName[0].code}).`);
-  return { h, addresses };
+  return { h, addresses, contacts };
+}
+
+async function saveContacts(db, partyId, contacts) {
+  await db.query('DELETE FROM party_contacts WHERE party_id = $1', [partyId]);
+  let i = 0;
+  for (const c of contacts) {
+    i += 1;
+    await db.query('INSERT INTO party_contacts (party_id, sort_order, name, designation, phone, email) VALUES ($1, $2, $3, $4, $5, $6)',
+      [partyId, i, c.name, c.designation, c.phone, c.email]);
+  }
 }
 
 async function saveAddresses(db, partyId, addresses) {
@@ -208,10 +266,10 @@ async function saveAddresses(db, partyId, addresses) {
     i += 1;
     await db.query(
       `INSERT INTO party_addresses (party_id, sort_order, address_type, name, address1, address2, address3, country_id, state_id, city_id,
-                                    pincode, phone, email, contact_person, gst_code, is_default)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+                                    pincode, phone, email, contact_person, gst_code, is_default, distance_km)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
       [partyId, i, a.type, a.name, a.address1, a.address2, a.address3, a.countryId, a.stateId, a.cityId,
-        a.pincode, a.phone, a.email, a.contactPerson, a.gstCode, a.isDefault]);
+        a.pincode, a.phone, a.email, a.contactPerson, a.gstCode, a.isDefault, a.distanceKm]);
   }
 }
 
@@ -221,14 +279,17 @@ async function audit(db, user, action, partyId, details) {
 }
 
 export async function createParty(user, body) {
-  const { h, addresses } = await read(user.companyId, body);
+  const { h, addresses, contacts } = await read(user.companyId, body);
   const partyId = await withTransaction(async (db) => {
     const code = h.code;
     const pid = (await db.query(
-      `INSERT INTO parties (company_id, code, name, party_type, gst_code, currency_id, is_export, general_type_mapping, is_active, created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10) RETURNING id`,
-      [user.companyId, code, h.name, h.type, h.gstCode, h.currencyId, h.isExport, h.generalTypeMapping, h.isActive, user.id])).rows[0].id;
+      `INSERT INTO parties (company_id, code, name, party_type, gst_code, currency_id, is_export, general_type_mapping, is_active, created_by, updated_by,
+                            pan, payment_term_id, credit_limit, apply_gst, hold_payment, hold_reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
+      [user.companyId, code, h.name, h.type, h.gstCode, h.currencyId, h.isExport, h.generalTypeMapping, h.isActive, user.id,
+        h.pan, h.paymentTermId, h.creditLimit, h.applyGst, h.holdPayment, h.holdReason])).rows[0].id;
     await saveAddresses(db, pid, addresses);
+    await saveContacts(db, pid, contacts);
     await audit(db, user, 'CREATE', pid, { code, name: h.name, type: h.type, addresses: addresses.length });
     return pid;
   });
@@ -236,13 +297,15 @@ export async function createParty(user, body) {
 }
 
 export async function updateParty(user, partyId, body) {
-  const { h, addresses } = await read(user.companyId, body, partyId);
+  const { h, addresses, contacts } = await read(user.companyId, body, partyId);
   await withTransaction(async (db) => {
     const r = await db.query(
       `UPDATE parties SET code = $3, name = $4, party_type = $5, gst_code = $6, currency_id = $7, is_export = $8,
-              general_type_mapping = $9, is_active = $10, updated_by = $11, updated_at = now()
+              general_type_mapping = $9, is_active = $10, updated_by = $11, updated_at = now(),
+              pan = $12, payment_term_id = $13, credit_limit = $14, apply_gst = $15, hold_payment = $16, hold_reason = $17
         WHERE id = $1 AND company_id = $2`,
-      [partyId, user.companyId, h.code, h.name, h.type, h.gstCode, h.currencyId, h.isExport, h.generalTypeMapping, h.isActive, user.id]);
+      [partyId, user.companyId, h.code, h.name, h.type, h.gstCode, h.currencyId, h.isExport, h.generalTypeMapping, h.isActive, user.id,
+        h.pan, h.paymentTermId, h.creditLimit, h.applyGst, h.holdPayment, h.holdReason]);
     if (!r.rowCount) throw new AppError(404, 'Party not found.');
     // A party used as buyer in a costing must stay a buyer
     if (h.type === 'supplier') {
@@ -250,6 +313,7 @@ export async function updateParty(user, partyId, body) {
       if (used.rows.length) throw new AppError(400, `This party is the buyer in costing ${used.rows[0].costing_no}, so it can't be only a Supplier. Use "Both".`);
     }
     await saveAddresses(db, partyId, addresses);
+    await saveContacts(db, partyId, contacts);
     await audit(db, user, 'UPDATE', partyId, { name: h.name, type: h.type, addresses: addresses.length, active: h.isActive });
   });
   return getParty(user.companyId, partyId);

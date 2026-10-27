@@ -67,7 +67,7 @@ function orderWarn(flow) {
     .map(l => ({ l, d: daysTo(l.exFactory) })).filter(x => x.d !== null && x.d <= 60).sort((a, b) => a.d - b.d)[0];
   if (!open) return '';
   const when = open.d < 0 ? `was ${-open.d} day${open.d === -1 ? '' : 's'} ago` : open.d === 0 ? 'is today' : `is in ${open.d} day${open.d === 1 ? '' : 's'}`;
-  return `Line ${open.l.lineNo} ex-factory ${when} · BOM not approved`;
+  return `${flow.lines.length === 1 ? "Ex-factory" : `Line ${open.l.lineNo} ex-factory`} ${when} · BOM not approved`;
 }
 
 export default function OrderEntry({ active, onNotice, session, onGo, request }) {
@@ -87,7 +87,8 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   const [mode, setMode] = useState(() => ((session?.permissions?.['order.entry'] || []).includes('create') ? 'form' : 'list')); // opens on a new order; 'list' = All orders
   const [listState, setListState] = useState({ search: '', view: '', group: true });
   const [tab, setTab] = useState('lines');
-  const [lastOpened, setLastOpened] = useState(null); // order to highlight when going back to the list
+  const [lastOpened, setLastOpened] = useState(null); // order no. (line) to highlight when going back to the list
+  const [focusId, setFocusId] = useState(null);       // the order no. (line) on screen; lines entered with it stay one click away
   const [focusKey, setFocusKey] = useState(null);   // new line to put the cursor in
   const [flow, setFlow] = useState(null);           // costing / BOM state of the saved lines
 
@@ -105,7 +106,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
 
   // Opened from another screen (e.g. the Order step of a costing)
   useEffect(() => {
-    if (request?.orderId && lookups) openOrder(request.orderId);
+    if (request?.orderId && lookups) openOrder(request.orderId, request.lineId);
   }, [request?.n, lookups]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ranges = useMemo(() => Object.fromEntries((lookups?.sizeRanges || []).map(r => [String(r.id), r])), [lookups]);
@@ -123,7 +124,9 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   }, [brandId, unsavedCount]);
 
   const lineTotal = (l) => (l.sizeRangeId ? Object.values(l.sizes).reduce((a, v) => a + toInt(v), 0) : toInt(l.manualTotal));
-  const grandTotal = lines.reduce((a, l) => a + lineTotal(l), 0);
+  // On a saved order only the opened order no. shows (plus any new lines being added to it)
+  const shown = order && focusId ? lines.filter(l => !l.saved || l.id === focusId) : lines;
+  const grandTotal = shown.reduce((a, l) => a + lineTotal(l), 0);
   const deviation = order ? order.allowedDeviation : header.deviation;
   const maxAllowed = deviation === 'open' ? 'no limit (open)'
     : `${fmtNum(Math.ceil(grandTotal * (1 + Number(deviation) / 100)))} (+${deviation}%)`;
@@ -236,10 +239,14 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
         const fresh = lines.filter(x => !x.saved);
         if (fresh.length) saved = await api(`/orders/${order.id}/lines`, { method: 'POST', body: { lines: fresh.map(toPayload) } });
       }
+      const isNew = !order;
+      const before = new Set((order?.lines || []).map(l => l.id));
       loadSaved(saved);
+      const created = saved.lines.filter(l => !before.has(l.id));
+      if (isNew || !focusId) setFocusId(saved.lines[0]?.id || null);
       setTried(false);
       setProblems([]);
-      setMessage(saved.id);
+      setMessage({ orderId: saved.id, created: created.map(l => ({ id: l.id, orderNo: l.orderNo })), isNew });
     } catch (e) {
       setServerError(e.message);
       if (order) { try { loadSaved(await api(`/orders/${order.id}`)); } catch { /* keep screen as is */ } }
@@ -248,11 +255,12 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
     }
   }
 
-  async function openOrder(id) {
+  async function openOrder(id, lineId) {
     if (isDirty && !window.confirm('Discard the changes on this screen and open the selected order?')) return;
     try {
       const saved = await api(`/orders/${id}`);
       loadSaved(saved);
+      setFocusId(saved.lines.some(l => l.id === Number(lineId)) ? Number(lineId) : saved.lines[0]?.id || null);
       setHeader(blankHeader());
       setTried(false); setProblems([]); setServerError(''); setMessage('');
       setMode('form');
@@ -262,7 +270,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   }
   function backToList() {
     if (isDirty && !window.confirm('Discard the changes on this screen and go back to the list?')) return;
-    setLastOpened(order?.id || null);
+    setLastOpened(focusId || null);
     setOrder(null); setHeader(blankHeader()); setLines([blankLine()]);
     setTried(false); setProblems([]); setServerError(''); setMessage('');
     setMode('list');
@@ -270,7 +278,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
 
   function startNew() {
     if (isDirty && !window.confirm('Discard the changes on this screen and start a new order?')) return;
-    setOrder(null); setHeader(blankHeader()); setLines([blankLine()]);
+    setOrder(null); setHeader(blankHeader()); setLines([blankLine()]); setFocusId(null);
     setTried(false); setProblems([]); setServerError(''); setMessage('');
     setTab('lines'); setMode('form');
   }
@@ -302,14 +310,19 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
       <>
         {serverError && <div className="alert alert-error" role="alert">{serverError}</div>}
         <OrderList active={active} state={listState} setState={setListState} highlightId={lastOpened}
-          onNew={startNew} onOpen={(id) => { setTab('lines'); openOrder(id); }} />
+          onNew={startNew} onOpen={(id, lineId) => { setTab('lines'); openOrder(id, lineId); }} />
       </>
     );
   }
 
-  const st = orderState(flow);
-  const warn = order && flow ? orderWarn(flow) : '';
-  const title = order ? (order.lines.length > 1 ? `${order.lines[0].orderNo} – ${order.lines[order.lines.length - 1].orderNo.split('/').pop()}` : order.lines[0]?.orderNo) : 'New order';
+  // Costing / BOM state of the order no. on screen
+  const flowShown = flow ? { lines: flow.lines.filter(l => !focusId || l.id === focusId) } : null;
+  const st = orderState(flowShown);
+  const warn = order && flowShown && flowShown.lines.length ? orderWarn(flowShown) : '';
+  const focusLine = order ? order.lines.find(l => l.id === focusId) || order.lines[0] : null;
+  const title = focusLine ? focusLine.orderNo : 'New order';
+  // Other order nos. saved in the same entry (same brand and style), one click away
+  const siblings = order ? order.lines.filter(l => l.id !== focusLine?.id) : [];
   const openCosting = (l) => onGo('costing', l.costing ? { costingId: l.costing.id } : { newForLine: l.id });
   const cell = (label, value, opts = {}) => (
     <div className={`o-row ${opts.wide ? 'wide' : ''}`} title={opts.title}>
@@ -344,9 +357,14 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
             {has('order.entry.import_excel') && !order && <button type="button" className="tb" title="Coming in a later phase" onClick={() => onNotice('Excel import is coming in a later phase.')}>Import lines from Excel</button>}
           </StatusBar>
 
-          {message && order && message === order.id && (
+          {message && order && typeof message === 'object' && message.orderId === order.id && (
             <div className="alert alert-success o-saved" role="status">
-              <span>Order <b>{title}</b> saved with {plural(order.lines.length, 'line')}. PO no. and size-wise qty can still be filled later.</span>
+              <span>
+                {message.isNew && message.created.length > 1
+                  ? <>{message.created.length} orders saved: {message.created.map((c, i) => <span key={c.id}>{i > 0 && ', '}<button type="button" className="o-link" onClick={() => setFocusId(c.id)}><b>{c.orderNo}</b></button></span>)}.</>
+                  : <>Order <b>{title}</b> saved.</>}
+                {' '}PO no. and size-wise qty can still be filled later.
+              </span>
               <button type="button" className="tb" onClick={backToList}>See it in All orders</button>
               <button type="button" className="tb" onClick={startNew}>Make another order</button>
             </div>
@@ -360,6 +378,11 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
               <span>Order</span>
               <h1>{title}</h1>
               {warn && <p className="o-warn">{warn}</p>}
+              {siblings.length > 0 && (
+                <p className="o-siblings">Entered together with:{' '}
+                  {siblings.map((l, i) => <span key={l.id}>{i > 0 && ', '}<button type="button" className="o-link" onClick={() => setFocusId(l.id)}>{l.orderNo}</button></span>)}
+                </p>
+              )}
             </div>
 
             <div className="o-groups">
@@ -390,13 +413,13 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
                     <option value="open">Open (no limit)</option>
                   </select>
                 ), { req: true })}
-                {cell('Total order qty', <b>{fmtNum(grandTotal)} pcs</b>, { title: 'Sum of all order lines, worked out automatically' })}
+                {cell(order ? 'Order qty' : 'Total order qty', <b>{fmtNum(grandTotal)} pcs</b>, { title: order ? 'Qty of this order no.' : 'Sum of all order lines, worked out automatically' })}
                 {cell('Max allowed', grandTotal > 0 ? maxAllowed : '—')}
               </div>
             </div>
 
             <div className="o-tabs" role="tablist">
-              {[['lines', `Order lines (${lines.length})`], ...(order ? [['flow', 'Costing & BOM']] : []), ['other', 'Other info']].map(([id, label]) => (
+              {[['lines', order ? 'Order line' : `Order lines (${lines.length})`], ...(order ? [['flow', 'Costing & BOM']] : []), ['other', 'Other info']].map(([id, label]) => (
                 <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>
               ))}
             </div>
@@ -424,7 +447,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
                       {lines.length === 0 && (
                         <tr><td colSpan={11} className="empty-row">No order lines yet. Click + to add the first line.</td></tr>
                       )}
-                      {lines.map((l, i) => {
+                      {shown.map((l, i) => {
                         const b = badOf(l);
                         const range = l.sizeRangeId ? ranges[l.sizeRangeId] : null;
                         const preview = l.saved ? null : previews[previewIndex++];
@@ -483,14 +506,14 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
                             <td>{l.saved ? fmtDate(l.fobDate)
                               : <DateInput className={b.fobDate ? 'bad' : ''} ariaLabel={`FOB date line ${i + 1}`} value={l.fobDate} onChange={v => setLine(l.key, { fobDate: v })}
                                   title="Press Enter on the last line to add a new line"
-                                  onKeyDown={e => { if (e.key === 'Enter' && i === lines.length - 1) { e.preventDefault(); setTimeout(addLine, 0); } }} />}</td>
+                                  onKeyDown={e => { if (e.key === 'Enter' && i === shown.length - 1) { e.preventDefault(); setTimeout(addLine, 0); } }} />}</td>
                           </tr>
                         );
                       })}
                     </tbody>
                     <tfoot>
                       <tr>
-                        <td colSpan={8}>Total · {plural(lines.length, 'line')}{grandTotal > 0 && ` · max allowed ${maxAllowed}`}</td>
+                        <td colSpan={8}>Total · {plural(shown.length, 'line')}{grandTotal > 0 && ` · max allowed ${maxAllowed}`}</td>
                         <td className="num"><b>{fmtNum(grandTotal)}</b></td>
                         <td colSpan={2} />
                       </tr>
@@ -505,7 +528,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
               <div className="grid-scroll"><table className="og o-flow-table">
                 <thead><tr><th>#</th><th>Order no.</th><th className="num">Qty</th><th>Ex-factory</th><th>Costing</th><th>BOM</th></tr></thead>
                 <tbody>
-                  {(flow?.lines || []).map(l => {
+                  {(flowShown?.lines || []).map(l => {
                     const d = daysTo(l.exFactory);
                     return (
                       <tr key={l.id}>

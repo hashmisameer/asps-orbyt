@@ -267,7 +267,7 @@ export default function Bom({ active, session, onGo, request }) {
             </div>
             <div className="o-groups">
               <div>
-                <Field label="Order no."><button type="button" className="o-link" onClick={() => flow && onGo('orderEntry', { orderId: flow.line.orderId })}>{data.order.orderNo}</button></Field>
+                <Field label="Order no."><button type="button" className="o-link" onClick={() => flow && onGo('orderEntry', { orderId: flow.line.orderId, lineId: flow.line.id })}>{data.order.orderNo}</button></Field>
                 <Field label="Style">{data.order.styleCode} · {data.order.styleName}</Field>
                 <Field label="Product category">{data.order.category || '—'}</Field>
                 <Field label="Brand / colour">{data.order.brand} · {data.order.colour}</Field>

@@ -1,5 +1,5 @@
-// Orders list (first thing you see on Order entry): search, quick filters, group by brand.
-// Click a row to open the order. The list order is kept, so the form can step with ‹ ›.
+// Orders list ("All orders"): one row per order no., with search, quick filters and group by brand.
+// Click a row to open exactly that order no.
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 
@@ -11,11 +11,9 @@ const FILTERS = [
 const fmtDate = (iso) => (iso ? iso.split('-').reverse().join('-') : '—');
 const fmtNum = (n) => Number(n || 0).toLocaleString('en-IN');
 
-function Pill({ done, of }) {
-  if (!of) return <span className="o-pill no">—</span>;
-  if (done === of) return <span className="o-pill ok">{of === 1 ? 'Done' : `All ${of}`}</span>;
-  return <span className={`o-pill ${done ? 'wr' : 'no'}`}>{done} of {of}</span>;
-}
+const COSTING = { final: ['Final', 'ok'], actual: ['Actual', 'ok'], initial: ['Initial', 'wr'] };
+const BOM = { approved: ['Approved', 'ok'], draft: ['Draft', 'wr'] };
+const Pill = ({ map, value }) => (map[value] ? <span className={`o-pill ${map[value][1]}`}>{map[value][0]}</span> : <span className="o-pill no">—</span>);
 
 export default function OrderList({ active, onOpen, onNew, state, setState, highlightId }) {
   const { search, view, group } = state;
@@ -34,7 +32,7 @@ export default function OrderList({ active, onOpen, onNew, state, setState, high
     let stop = false;
     const params = new URLSearchParams(Object.entries({ search, view, limit: 300 }).filter(([, v]) => v));
     const t = setTimeout(() => {
-      api(`/orders?${params}`).then(r => { if (!stop) { setRows(r); setError(''); } }).catch(e => { if (!stop) setError(e.message); });
+      api(`/orders/lines?${params}`).then(r => { if (!stop) { setRows(r); setError(''); } }).catch(e => { if (!stop) setError(e.message); });
     }, search ? 250 : 0);
     return () => { stop = true; clearTimeout(t); };
   }, [search, view]);
@@ -50,31 +48,32 @@ export default function OrderList({ active, onOpen, onNew, state, setState, high
   });
 
   const set = (patch) => setState(s => ({ ...s, ...patch }));
-  const ids = (rows || []).map(r => r.id);
   const groups = [];
   if (rows && group) {
     for (const r of rows) {
       let g = groups.find(x => x.brand === r.brand);
       if (!g) { g = { brand: r.brand, rows: [], qty: 0 }; groups.push(g); }
-      g.rows.push(r); g.qty += r.totalQty;
+      g.rows.push(r); g.qty += r.qty;
     }
   }
   const filterName = FILTERS.find(f => f.id === view)?.label;
 
   const row = (r) => (
-    <tr key={r.id} data-order={r.id} className={`o-lrow ${r.id === highlightId ? 'o-hl' : ''}`} tabIndex={0} onClick={() => onOpen(r.id, ids)} onKeyDown={e => { if (e.key === 'Enter') onOpen(r.id, ids); }}>
-      <td className="order-no">{r.orderNos || '—'}{r.id === highlightId && <span className="o-pill ok" style={{ marginLeft: 8 }}>Last opened</span>}</td>
+    <tr key={r.lineId} data-order={r.lineId} className={`o-lrow ${r.lineId === highlightId ? 'o-hl' : ''}`} tabIndex={0}
+      onClick={() => onOpen(r.orderId, r.lineId)} onKeyDown={e => { if (e.key === 'Enter') onOpen(r.orderId, r.lineId); }}>
+      <td className="order-no">{r.orderNo}{r.lineId === highlightId && <span className="o-pill ok" style={{ marginLeft: 8 }}>Last opened</span>}</td>
       {!group && <td>{r.brand}</td>}
       <td>{r.styleCode} <span className="muted">· {r.styleName}</span></td>
-      <td>{r.category}</td>
-      <td className="num">{r.lines}</td>
-      <td className="num">{fmtNum(r.totalQty)}</td>
-      <td>{fmtDate(r.firstExFactory)}</td>
-      <td><Pill done={r.finalLines} of={r.lines} /></td>
-      <td><Pill done={r.bomApproved} of={r.lines} /></td>
+      <td>{r.category || '—'}</td>
+      <td>{r.colour}</td>
+      <td>{r.buyerPo || <span className="muted">—</span>}</td>
+      <td className="num">{fmtNum(r.qty)}</td>
+      <td>{fmtDate(r.exFactory)}</td>
+      <td><Pill map={COSTING} value={r.costing} /></td>
+      <td><Pill map={BOM} value={r.bom} /></td>
     </tr>
   );
-  const cols = group ? 8 : 9;
+  const cols = group ? 9 : 10;
 
   return (
     <div className="o-page">
@@ -85,7 +84,7 @@ export default function OrderList({ active, onOpen, onNew, state, setState, high
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>
           {filterName && <span className="o-facet">{filterName}<button type="button" aria-label={`Remove filter ${filterName}`} onClick={() => set({ view: '' })}>×</button></span>}
           {group && <span className="o-facet">Group by: Brand<button type="button" aria-label="Remove group by brand" onClick={() => set({ group: false })}>×</button></span>}
-          <input ref={box} aria-label="Search orders" placeholder="Search order no., buyer PO, brand or style…" value={search}
+          <input ref={box} aria-label="Search orders" placeholder="Search order no., buyer PO, brand, style or product group…" value={search}
             onChange={e => set({ search: e.target.value })}
             onKeyDown={e => { if (e.key === 'Backspace' && !search) set(group ? { group: false } : { view: '' }); }} />
           <div className="o-filter-wrap">
@@ -118,8 +117,8 @@ export default function OrderList({ active, onOpen, onNew, state, setState, high
           <table className="og o-ltable">
             <thead>
               <tr>
-                <th>Order no.</th>{!group && <th>Brand</th>}<th>Style</th><th>Product group › class</th>
-                <th className="num">Lines</th><th className="num">Qty</th><th>First ex-factory</th><th>Final costing</th><th>BOM approved</th>
+                <th>Order no.</th>{!group && <th>Brand</th>}<th>Style</th><th>Product group › class</th><th>Colour</th><th>Buyer PO</th>
+                <th className="num">Qty</th><th>Ex-factory</th><th>Costing</th><th>BOM</th>
               </tr>
             </thead>
             <tbody>
@@ -130,8 +129,7 @@ export default function OrderList({ active, onOpen, onNew, state, setState, high
               {rows && !group && rows.map(row)}
               {rows && group && groups.map(g => [
                 <tr key={`g-${g.brand}`} className="o-grow" onClick={() => setShut(s => ({ ...s, [g.brand]: !s[g.brand] }))}>
-                  <td colSpan={3}><button type="button" aria-expanded={!shut[g.brand]}>{shut[g.brand] ? '▸' : '▾'} {g.brand} ({g.rows.length})</button></td>
-                  <td className="num">{g.rows.reduce((a, r) => a + r.lines, 0)}</td>
+                  <td colSpan={5}><button type="button" aria-expanded={!shut[g.brand]}>{shut[g.brand] ? '▸' : '▾'} {g.brand} ({g.rows.length})</button></td>
                   <td className="num">{fmtNum(g.qty)}</td>
                   <td colSpan={3} />
                 </tr>,

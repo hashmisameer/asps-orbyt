@@ -372,3 +372,44 @@ export async function listOrders(companyId, filters = {}) {
     finalLines: r.final_lines, bomApproved: r.bom_approved
   }));
 }
+
+// Orders list, one row per order no. (order line): what you open is exactly that order no.
+// view: 'soon' = ex-factory within 90 days, 'nocosting' = no Final costing yet, 'bompending' = BOM not approved yet
+export async function listOrderLines(companyId, filters = {}) {
+  const q = String(filters.search || '').trim();
+  const view = ['soon', 'nocosting', 'bompending'].includes(filters.view) ? filters.view : '';
+  const limit = Math.min(Number(filters.limit) || 300, 500);
+  const rows = await query(
+    `SELECT * FROM (
+     SELECT l.id, l.order_id, l.order_no, l.buyer_po_no, l.total_qty, l.ex_factory_date, l.created_at,
+            to_char(l.ex_factory_date, 'YYYY-MM-DD') AS ex_factory,
+            o.brand_id, b.name AS brand, s.code AS style_code, s.name AS style_name, c.name AS colour,
+            COALESCE(NULLIF(concat_ws(' › ', g.name, k.name), ''),
+                     CASE WHEN pp.id IS NULL THEN pc.name ELSE pp.name || ' › ' || pc.name END) AS category,
+            (SELECT k2.costing_type FROM costings k2 WHERE k2.order_line_id = l.id AND NOT k2.is_deleted
+              ORDER BY (k2.costing_type = 'final') DESC, k2.updated_at DESC LIMIT 1) AS costing_type,
+            (SELECT m.status FROM boms m WHERE m.order_line_id = l.id) AS bom_status
+       FROM order_lines l
+       JOIN orders o ON o.id = l.order_id
+       JOIN brands b ON b.id = o.brand_id
+       JOIN styles s ON s.id = o.style_id
+       JOIN colours c ON c.id = l.colour_id
+       LEFT JOIN product_groups g ON g.id = s.product_group_id
+       LEFT JOIN product_classes k ON k.id = s.product_class_id
+       LEFT JOIN product_categories pc ON pc.id = o.product_category_id
+       LEFT JOIN product_categories pp ON pp.id = pc.parent_id
+      WHERE l.company_id = $1
+        AND ($2 = '' OR l.order_no ILIKE '%' || $2 || '%' OR l.buyer_po_no ILIKE '%' || $2 || '%' OR b.name ILIKE '%' || $2 || '%'
+             OR s.code ILIKE '%' || $2 || '%' OR s.name ILIKE '%' || $2 || '%' OR g.name ILIKE '%' || $2 || '%' OR k.name ILIKE '%' || $2 || '%')
+     ) t
+     WHERE ($3 = '' OR ($3 = 'soon' AND ex_factory_date <= CURRENT_DATE + 90)
+                    OR ($3 = 'nocosting' AND COALESCE(costing_type, 'initial') = 'initial')
+                    OR ($3 = 'bompending' AND COALESCE(bom_status, '') <> 'approved'))
+     ORDER BY ${view === 'soon' ? 'ex_factory_date ASC' : 'created_at DESC, order_no DESC'}
+     LIMIT $4`, [companyId, q, view, limit]);
+  return rows.map(r => ({
+    lineId: r.id, orderId: r.order_id, orderNo: r.order_no, buyerPo: r.buyer_po_no || '', qty: r.total_qty, exFactory: r.ex_factory,
+    brandId: r.brand_id, brand: r.brand, styleCode: r.style_code, styleName: r.style_name, colour: r.colour, category: r.category || '',
+    costing: r.costing_type || '', bom: r.bom_status || ''
+  }));
+}

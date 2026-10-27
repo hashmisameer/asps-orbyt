@@ -27,6 +27,11 @@ ordersRouter.get('/next-numbers', can(FEATURE, 'view'), asyncHandler(async (req,
   res.json({ numbers: await orders.previewNumbers(req.user.companyId, brandId, count) });
 }));
 
+// Orders list, one row per order no.
+ordersRouter.get('/lines', can(FEATURE, 'view'), asyncHandler(async (req, res) => {
+  res.json(await orders.listOrderLines(req.user.companyId, { search: req.query.search, view: req.query.view, limit: req.query.limit }));
+}));
+
 ordersRouter.get('/', can(FEATURE, 'view'), asyncHandler(async (req, res) => {
   res.json(await orders.listOrders(req.user.companyId, {
     search: req.query.search, brandId: req.query.brandId, categoryId: req.query.categoryId, styleId: req.query.styleId,

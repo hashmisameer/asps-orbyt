@@ -1,4 +1,4 @@
-// One screen for the small masters (Season, Currency, Item group, Item): opens on the list of all records,
+// One screen for the item masters (Item group, Item): opens on a new record; the list opens with All …,
 // click one for its form. Untick "Active" to hide it from dropdowns (rows are never deleted).
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
@@ -6,26 +6,6 @@ import RecordList from '../components/RecordList.jsx';
 import { ControlPanel, StatusBar, Field, AllButton } from '../components/RecordBar.jsx';
 
 export const MASTER_SCREENS = {
-  buyer: {
-    title: 'Buyer', plural: 'buyers',
-    fields: [
-      { key: 'code', label: 'Short code', required: true, upper: true, max: 10, width: 120 },
-      { key: 'name', label: 'Buyer name', required: true, max: 120 },
-      { key: 'country', label: 'Country', max: 60 }
-    ]
-  },
-  season: {
-    title: 'Season', plural: 'seasons',
-    fields: [{ key: 'name', label: 'Season', required: true, max: 60, hint: 'e.g. Spring Summer, Autumn Winter' }]
-  },
-  currency: {
-    title: 'Currency', plural: 'currencies',
-    fields: [
-      { key: 'code', label: 'Code', required: true, upper: true, max: 3, width: 90, hint: 'e.g. USD' },
-      { key: 'name', label: 'Currency name', required: true, max: 60 },
-      { key: 'rateToInr', label: 'Rate in rupees', required: true, number: true, width: 140, hint: 'Suggested rate for new costings' }
-    ]
-  },
   item_group: {
     title: 'Summary item', plural: 'summary items', feature: 'masters.item_group',
     fields: [

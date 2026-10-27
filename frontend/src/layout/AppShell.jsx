@@ -8,6 +8,7 @@ import Bom from '../screens/Bom.jsx';
 import SimpleMaster from '../screens/SimpleMaster.jsx';
 import PartyMaster from '../screens/PartyMaster.jsx';
 import BrandMaster from '../screens/BrandMaster.jsx';
+import BasicMasters from '../screens/BasicMasters.jsx';
 
 // Built screens: id -> component, tab title and breadcrumb
 const SCREENS = {
@@ -16,8 +17,7 @@ const SCREENS = {
   bom: { component: Bom, title: 'BOM', crumb: 'Order › BOM' },
   party: { component: PartyMaster, title: 'Party master', crumb: 'Masters › Party master' },
   brand: { component: BrandMaster, title: 'Brand master', crumb: 'Masters › Brand master' },
-  season: { component: SimpleMaster, props: { kind: 'season' }, title: 'Season', crumb: 'Masters › Season' },
-  currency: { component: SimpleMaster, props: { kind: 'currency' }, title: 'Currency', crumb: 'Masters › Currency' },
+  basic: { component: BasicMasters, title: 'Basic masters', crumb: 'Masters › Basic masters' },
   itemGroup: { component: SimpleMaster, props: { kind: 'item_group' }, title: 'Summary items', crumb: 'Masters › Item group' },
   item: { component: SimpleMaster, props: { kind: 'item' }, title: 'Items', crumb: 'Masters › Item master' }
 };
@@ -35,7 +35,7 @@ const Icon = {
 };
 
 // Screens built with the record layout (list -> form, chatter on the right) fill the page edge to edge
-const FLUSH_SCREENS = ['orderEntry', 'costing', 'bom', 'party', 'brand', 'season', 'currency', 'itemGroup', 'item'];
+const FLUSH_SCREENS = ['orderEntry', 'costing', 'bom', 'party', 'brand', 'basic', 'itemGroup', 'item'];
 const TILE_COLOURS = ['#0F766E', '#1D4ED8', '#B45309', '#7C3AED', '#BE123C', '#047857', '#0369A1', '#4D7C0F'];
 
 // App icons on Home (Odoo-style launcher): one picture and colour per module

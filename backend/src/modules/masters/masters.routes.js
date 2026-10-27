@@ -1,4 +1,4 @@
-// /api/masters/:kind  (kind = season, currency, item_group, item)
+// /api/masters/:kind  (kind = colour, size_range, uom, season, currency, item_group, item)
 import { Router } from 'express';
 import { asyncHandler, AppError } from '../../middleware/errors.js';
 import { requireAuth } from '../../middleware/auth.js';
@@ -32,4 +32,7 @@ mastersRouter.post('/:kind', guard('create'), asyncHandler(async (req, res) => {
 }));
 mastersRouter.put('/:kind/:id', guard('edit'), asyncHandler(async (req, res) => {
   res.json(await masters.update(req.master, req.user, idParam(req.params.id), req.body || {}));
+}));
+mastersRouter.delete('/:kind/:id', guard('edit'), asyncHandler(async (req, res) => {
+  res.json(await masters.remove(req.master, req.user, idParam(req.params.id)));
 }));

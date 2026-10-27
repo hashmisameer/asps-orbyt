@@ -29,3 +29,4 @@ partiesRouter.get('/', can(FEATURE, 'view'), asyncHandler(async (req, res) => re
 partiesRouter.get('/:id', can(FEATURE, 'view'), asyncHandler(async (req, res) => res.json(await parties.getParty(req.user.companyId, idParam(req.params.id)))));
 partiesRouter.post('/', can(FEATURE, 'create'), asyncHandler(async (req, res) => res.status(201).json(await parties.createParty(req.user, req.body || {}))));
 partiesRouter.put('/:id', can(FEATURE, 'edit'), asyncHandler(async (req, res) => res.json(await parties.updateParty(req.user, idParam(req.params.id), req.body || {}))));
+partiesRouter.delete('/:id', can(FEATURE, 'edit'), can('masters.party.delete', 'view'), asyncHandler(async (req, res) => res.json(await parties.deleteParty(req.user, idParam(req.params.id)))));

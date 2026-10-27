@@ -57,7 +57,7 @@ ordersRouter.patch('/:id/lines/:lineId', can(FEATURE, 'edit'), asyncHandler(asyn
   res.json(await orders.updateLine(req.user, idParam(req.params.id), idParam(req.params.lineId), req.body || {}));
 }));
 
-// Saved lines are kept for the record; cancelling comes in a later phase
-ordersRouter.delete('/:id/lines/:lineId', asyncHandler(async () => {
-  throw new AppError(400, "Saved lines can't be deleted.");
+// Delete one order no. (only while it has no costing and no BOM). Needs Edit plus the Delete function.
+ordersRouter.delete('/:id/lines/:lineId', can(FEATURE, 'edit'), can('order.entry.delete', 'view'), asyncHandler(async (req, res) => {
+  res.json(await orders.deleteOrderLine(req.user, idParam(req.params.id), idParam(req.params.lineId)));
 }));

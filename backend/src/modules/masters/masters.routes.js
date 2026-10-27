@@ -47,6 +47,8 @@ mastersRouter.post('/:kind/batch', batchGuard, asyncHandler(async (req, res) => 
 mastersRouter.put('/:kind/:id', guard('edit'), asyncHandler(async (req, res) => {
   res.json(await masters.update(req.master, req.user, idParam(req.params.id), req.body || {}));
 }));
-mastersRouter.delete('/:kind/:id', guard('edit'), asyncHandler(async (req, res) => {
+// Screens with their own Delete function (Product category, Item, Summary item) also need that function
+const deleteGuard = (req, res, next) => (req.master.deleteFeature ? can(req.master.deleteFeature, 'view')(req, res, next) : next());
+mastersRouter.delete('/:kind/:id', guard('edit'), deleteGuard, asyncHandler(async (req, res) => {
   res.json(await masters.remove(req.master, req.user, idParam(req.params.id)));
 }));

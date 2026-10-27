@@ -318,3 +318,20 @@ export async function updateParty(user, partyId, body) {
   });
   return getParty(user.companyId, partyId);
 }
+
+// Delete a party nothing uses yet (no brand, no costing); otherwise it can only be archived (Active off)
+export async function deleteParty(user, partyId) {
+  return withTransaction(async (db) => {
+    const p = (await db.query('SELECT code, name FROM parties WHERE id = $1 AND company_id = $2 FOR UPDATE', [partyId, user.companyId])).rows[0];
+    if (!p) throw new AppError(404, 'Party not found.');
+    const u = (await db.query(
+      `SELECT (SELECT COUNT(*) FROM brands WHERE buyer_id = $1)::int AS brands,
+              (SELECT COUNT(*) FROM costings WHERE buyer_id = $1)::int AS costings`, [partyId])).rows[0];
+    const used = [u.brands && `${u.brands} brand${u.brands === 1 ? '' : 's'}`, u.costings && `${u.costings} costing${u.costings === 1 ? '' : 's'}`].filter(Boolean);
+    if (used.length) throw new AppError(400, `Party ${p.code} is used in ${used.join(' and ')}, so it can't be deleted. Archive it instead (Active off).`);
+    await db.query('DELETE FROM party_addresses WHERE party_id = $1', [partyId]);
+    await db.query('DELETE FROM parties WHERE id = $1', [partyId]);
+    await audit(db, user, 'DELETE', partyId, { code: p.code, name: p.name });
+    return { ok: true, code: p.code };
+  });
+}

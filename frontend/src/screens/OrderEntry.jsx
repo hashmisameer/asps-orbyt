@@ -3,7 +3,7 @@
 // Lines: one row per order no., with dispatch mode, buyer PO, colour, size range, size-wise qty and dates.
 // After saving, only buyer PO no., size range and quantities can change.
 import { daysTo } from '../components/FlowStrip.jsx';
-import { ControlPanel, StatusBar } from '../components/RecordBar.jsx';
+import { ControlPanel, StatusBar, ActionMenu } from '../components/RecordBar.jsx';
 import Chatter from '../components/Chatter.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
@@ -285,6 +285,36 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
     setTab('lines'); setMode('form');
   }
 
+  // ---------- ⚙ Action menu ----------
+  // Duplicate: a new order with the same brand, style and the opened line's details (new order no. on save)
+  function duplicate() {
+    if (isDirty && !window.confirm('Discard the changes on this screen and make a copy?')) return;
+    const src = lines.find(l => l.saved && l.id === focusId) || lines.find(l => l.saved);
+    const from = src?.orderNo;
+    setHeader({ brandId: String(order.brandId), styleId: String(order.styleId), styleText: `${order.styleCode} · ${order.styleName}`,
+      deviation: String(order.allowedDeviation), remarks: order.remarks || '' });
+    setLines([{ ...blankLine(src), buyerPoNo: '', sizeRangeId: src?.sizeRangeId || '', sizes: { ...(src?.sizes || {}) }, manualTotal: src?.manualTotal || '' }]);
+    setOrder(null); setFocusId(null); setShowAll(false);
+    setTried(false); setProblems([]); setServerError(''); setTab('lines');
+    setMessage(`Copy of ${from}. Check the buyer PO, quantities and dates, then Save to get a new order no.`);
+  }
+  async function deleteOrderNo(l) {
+    if (!window.confirm(`Delete order no. ${l.orderNo}? This can't be undone, and the number will not be used again.`)) return;
+    setServerError(''); setMessage('');
+    try {
+      const r = await api(`/orders/${order.id}/lines/${l.id}`, { method: 'DELETE' });
+      if (r.orderLeft) {
+        const saved = await api(`/orders/${order.id}`);
+        loadSaved(saved); setFocusId(saved.lines[0]?.id || null);
+        onNotice?.(`Order no. ${r.orderNo} deleted.`);
+      } else {
+        setOrder(null); setHeader(blankHeader()); setLines([blankLine()]); setFocusId(null); setLastOpened(null);
+        setMode('list');
+        onNotice?.(`Order no. ${r.orderNo} deleted.`);
+      }
+    } catch (e) { setServerError(e.message); }
+  }
+
   // Keyboard on the form: F2 = new, F3 = back to the list to search, Ctrl+S = save (only while this tab is on screen)
   useEffect(() => {
     if (!active || mode !== 'form') return undefined;
@@ -342,6 +372,17 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
           All orders <kbd className="tb-kbd">F3</kbd>
         </button>
         {order && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
+        {order && focusLine && (() => {
+          const fl = flow?.lines.find(x => x.id === focusLine.id);
+          const used = fl ? [fl.costing && 'a costing', fl.bom && 'a BOM'].filter(Boolean) : [];
+          const allowed = session?.permissions?.['order.entry'] || [];
+          return <ActionMenu items={[
+            allowed.includes('create') && { label: 'Duplicate', onClick: duplicate },
+            allowed.includes('edit') && has('order.entry.delete') && { label: `Delete ${focusLine.orderNo}`, danger: true, onClick: () => deleteOrderNo(focusLine),
+              disabled: used.length > 0 || isDirty,
+              title: used.length ? `It has ${used.join(' and ')}. Delete ${used.length > 1 ? 'them' : 'it'} first.` : isDirty ? 'Save or discard your changes first' : 'Delete this order no.' }
+          ]} />;
+        })()}
         {order && hasChanges && <span className="chip chip-amber">unsaved changes</span>}
       </ControlPanel>
 

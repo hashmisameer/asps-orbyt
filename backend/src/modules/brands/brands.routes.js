@@ -20,3 +20,4 @@ brandsRouter.get('/', can(FEATURE, 'view'), asyncHandler(async (req, res) => res
 brandsRouter.get('/:id', can(FEATURE, 'view'), asyncHandler(async (req, res) => res.json(await brands.getBrand(req.user.companyId, idParam(req.params.id)))));
 brandsRouter.post('/', can(FEATURE, 'create'), asyncHandler(async (req, res) => res.status(201).json(await brands.createBrand(req.user, req.body || {}))));
 brandsRouter.put('/:id', can(FEATURE, 'edit'), asyncHandler(async (req, res) => res.json(await brands.updateBrand(req.user, idParam(req.params.id), req.body || {}))));
+brandsRouter.delete('/:id', can(FEATURE, 'edit'), can('masters.brand.delete', 'view'), asyncHandler(async (req, res) => res.json(await brands.deleteBrand(req.user, idParam(req.params.id)))));

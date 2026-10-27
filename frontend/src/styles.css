@@ -931,3 +931,13 @@ kbd { font: inherit; font-size: 11px; border: 1px solid var(--border-strong); bo
 .o-grid-switch .tb { height: 30px; }
 .o-focus-row td { background: #F0FAF8; }
 .o-focus-row td:first-child { box-shadow: inset 3px 0 0 var(--teal); }
+
+/* ⚙ Action menu of a saved record */
+.o-act { position: relative; display: inline-flex; }
+.o-act-btn { gap: 6px; }
+.o-act-pop { position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; min-width: 190px; background: #fff; border: 1px solid var(--line, #d8dde3);
+  border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,.12); padding: 4px 0; display: flex; flex-direction: column; white-space: nowrap; }
+.o-act-pop button { text-align: left; background: none; border: 0; padding: 8px 14px; font: inherit; cursor: pointer; color: inherit; }
+.o-act-pop button:hover:not(:disabled), .o-act-pop button:focus-visible { background: #eef6f6; }
+.o-act-pop button:disabled { color: #9aa3ad; cursor: not-allowed; }
+.o-act-pop button.danger:not(:disabled) { color: #b42318; }

@@ -413,3 +413,25 @@ export async function listOrderLines(companyId, filters = {}) {
     costing: r.costing_type || '', bom: r.bom_status || ''
   }));
 }
+
+// Delete one order no. (order line) that has no costing and no BOM yet. Its number is not given out again.
+// The last order no. of an entry takes the entry with it.
+export async function deleteOrderLine(user, orderId, lineId) {
+  return withTransaction(async (db) => {
+    const l = (await db.query(
+      'SELECT id, order_no FROM order_lines WHERE id = $1 AND order_id = $2 AND company_id = $3 FOR UPDATE', [lineId, orderId, user.companyId])).rows[0];
+    if (!l) throw new AppError(404, 'Order not found.');
+    const u = (await db.query(
+      `SELECT (SELECT COUNT(*) FROM costings WHERE order_line_id = $1 AND NOT is_deleted)::int AS costings,
+              (SELECT COUNT(*) FROM boms WHERE order_line_id = $1)::int AS boms`, [lineId])).rows[0];
+    const used = [u.costings && `a costing`, u.boms && 'a BOM'].filter(Boolean);
+    if (used.length) throw new AppError(400, `${l.order_no} has ${used.join(' and ')}, so it can't be deleted. Delete ${used.length > 1 ? 'them' : 'it'} first.`);
+    // Costings deleted earlier still point to the line: let go of it
+    await db.query('UPDATE costings SET order_line_id = NULL WHERE order_line_id = $1 AND is_deleted', [lineId]);
+    await db.query('DELETE FROM order_lines WHERE id = $1', [lineId]);
+    const left = (await db.query('SELECT COUNT(*)::int AS n FROM order_lines WHERE order_id = $1', [orderId])).rows[0].n;
+    if (!left) await db.query('DELETE FROM orders WHERE id = $1', [orderId]);
+    await audit(db, user, 'DELETE_LINE', orderId, { orderNo: l.order_no });
+    return { ok: true, orderNo: l.order_no, orderLeft: left > 0 };
+  });
+}

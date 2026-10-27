@@ -7,7 +7,7 @@ import { daysTo } from '../components/FlowStrip.jsx';
 import BomItemPicker from './BomItemPicker.jsx';
 import RecordList from '../components/RecordList.jsx';
 import Chatter from '../components/Chatter.jsx';
-import { ControlPanel, StatusBar, Field, AllButton, SheetTabs } from '../components/RecordBar.jsx';
+import { ControlPanel, StatusBar, Field, AllButton, SheetTabs, ActionMenu } from '../components/RecordBar.jsx';
 
 const STATUS = { none: ['No BOM', 'no'], draft: ['Draft', 'wr'], approved: ['Approved', 'ok'] };
 
@@ -154,6 +154,18 @@ export default function Bom({ active, session, onGo, request }) {
     } catch (e) { setError(e.message); }
   }
 
+  // ⚙ Action › Delete: only a draft BOM (an approved one is reopened first); the order stays, ready for a new BOM
+  async function remove() {
+    const no = data.order.orderNo;
+    if (!window.confirm(`Delete the BOM of ${no}? All its items will be removed. This can't be undone.`)) return;
+    setError(''); setMessage('');
+    try {
+      await api(`/bom/order/${data.order.orderLineId}`, { method: 'DELETE' });
+      load(await api(`/bom/order/${data.order.orderLineId}`));
+      setMessage(`BOM of ${no} deleted.`);
+    } catch (e) { setError(e.message); }
+  }
+
   useEffect(() => {
     if (!active || picker || mode !== 'form') return undefined;
     const onKey = (e) => {
@@ -235,6 +247,10 @@ export default function Bom({ active, session, onGo, request }) {
       )}
       <ControlPanel crumbs={[{ label: 'BOMs', onClick: backToList }, { label: `BOM · ${data.order.orderNo}` }]}>
         <AllButton label="All BOMs" onClick={backToList} />
+        {data.bom && <ActionMenu items={[
+          allowed.includes('edit') && has('order.bom.delete') && { label: 'Delete BOM', danger: true, onClick: remove, disabled: approved || dirty,
+            title: approved ? 'This BOM is approved. Reopen it first, then delete.' : dirty ? 'Save or discard your changes first' : 'Delete this draft BOM' }
+        ]} />}
         {dirty && <span className="chip chip-amber">unsaved changes</span>}
       </ControlPanel>
 

@@ -9,7 +9,7 @@ import DateInput from '../components/DateInput.jsx';
 import ItemPicker from './ItemPicker.jsx';
 import RecordList from '../components/RecordList.jsx';
 import Chatter from '../components/Chatter.jsx';
-import { ControlPanel, StatusBar, Field, AllButton, SheetTabs } from '../components/RecordBar.jsx';
+import { ControlPanel, StatusBar, Field, AllButton, SheetTabs, ActionMenu } from '../components/RecordBar.jsx';
 
 const SECTIONS = [
   { key: 'fabric', name: 'Fabric', colour: '#0F766E' },
@@ -299,6 +299,10 @@ export default function Costing({ active, session, onGo, request }) {
       <ControlPanel crumbs={[{ label: 'Costings', onClick: backToList }, { label: viewing ? `${title} · revision ${viewing}` : title }]}>
         <AllButton label="All costings" onClick={backToList} />
         {saved && allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
+        {saved && <ActionMenu items={[
+          has('order.costing.delete') && allowed.includes('edit') && { label: 'Delete', danger: true, onClick: remove, disabled: Boolean(viewing) || saved.type === 'final',
+            title: saved.type === 'final' ? 'A Final costing can\'t be deleted. Save it as Actual first.' : viewing ? 'Go back to the latest revision first' : 'Delete this costing' }
+        ]} />}
         {dirty && saved && <span className="chip chip-amber">unsaved changes</span>}
       </ControlPanel>
 
@@ -310,10 +314,6 @@ export default function Costing({ active, session, onGo, request }) {
               <button type="button" className="tb tb-line" onClick={() => onGo('bom', { orderLineId: Number(header.orderLineId) })}>{flow?.bom ? 'Open BOM' : 'Create BOM'}</button>
             )}
             {has('order.costing.print') && <button type="button" className="tb" title="Coming in a later phase">Print</button>}
-            {has('order.costing.delete') && saved && (
-              <button type="button" className="tb" onClick={remove} disabled={viewing || saved.type === 'final' || !allowed.includes('edit')}
-                title={saved.type === 'final' ? 'A Final costing can\'t be deleted. Save it as Actual first.' : 'Delete this costing'}>Delete</button>
-            )}
           </StatusBar>
 
           {viewing && (

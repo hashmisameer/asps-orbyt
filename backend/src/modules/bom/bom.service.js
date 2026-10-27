@@ -274,3 +274,17 @@ export async function setStatus(user, orderLineId, status) {
     return getBom(user.companyId, orderLineId, db);
   });
 }
+
+// Delete a draft BOM (an approved one has to be reopened first)
+export async function deleteBom(user, orderLineId) {
+  return withTransaction(async (db) => {
+    const ol = await orderLineInfo(db, user.companyId, orderLineId);
+    const b = (await db.query('SELECT id, status FROM boms WHERE company_id = $1 AND order_line_id = $2 FOR UPDATE', [user.companyId, orderLineId])).rows[0];
+    if (!b) throw new AppError(404, `${ol.order_no} has no BOM yet.`);
+    if (b.status === 'approved') throw new AppError(400, `The BOM of ${ol.order_no} is approved. Reopen it first, then delete.`);
+    await db.query('DELETE FROM bom_lines WHERE bom_id = $1', [b.id]);
+    await db.query('DELETE FROM boms WHERE id = $1', [b.id]);
+    await audit(db, user, 'DELETE', b.id, { orderNo: ol.order_no });
+    return { ok: true, orderNo: ol.order_no };
+  });
+}

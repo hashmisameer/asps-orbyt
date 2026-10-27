@@ -6,7 +6,7 @@ import { api } from '../api.js';
 const TYPE_NAMES = { buyer: 'Buyer', supplier: 'Supplier', both: 'Both' };
 import RecordList from '../components/RecordList.jsx';
 import Chatter from '../components/Chatter.jsx';
-import { ControlPanel, StatusBar, Field, AllButton, SheetTabs } from '../components/RecordBar.jsx';
+import { ControlPanel, StatusBar, Field, AllButton, SheetTabs, ActionMenu } from '../components/RecordBar.jsx';
 
 let nextKey = 1;
 const GST_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
@@ -101,6 +101,38 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
     } finally {
       setBusy(false);
     }
+  }
+
+  // ---------- ⚙ Action menu ----------
+  function duplicate() {
+    if (dirty && !window.confirm('Discard the changes on this screen and make a copy?')) return;
+    const from = saved;
+    setSaved(null);
+    setHeader(h => ({ ...h, code: '', name: `${h.name} (COPY)`, gstCode: '', pan: '', isActive: true }));
+    setAddresses(as => as.map(({ id, ...a }) => ({ ...a, gstCode: '', key: nextKey++ })));
+    setContacts(cs => cs.map(({ id, ...c }) => ({ ...c, key: nextKey++ })));
+    setDirty(true); setError(''); setTab('addr');
+    setMessage(`Copy of ${from.code}. Change the name and GST code, then Save.`);
+  }
+  async function setArchived(off) {
+    if (dirty && !window.confirm('Discard the changes on this screen?')) return;
+    setError(''); setMessage('');
+    try {
+      const body = { ...header, isActive: !off, addresses: saved.addresses, contacts: saved.contacts };
+      load(await api(`/parties/${saved.id}`, { method: 'PUT', body }));
+      setMessage(off ? `Party ${saved.code} archived. It stays in old records but can't be picked in new ones.` : `Party ${saved.code} is active again.`);
+    } catch (e) { setError(e.message); }
+  }
+  async function remove() {
+    if (!window.confirm(`Delete party ${saved.code} · ${saved.name}? This can't be undone.`)) return;
+    setError(''); setMessage('');
+    try {
+      await api(`/parties/${saved.id}`, { method: 'DELETE' });
+      const no = saved.code;
+      setDirty(false); setSaved(null); setHeader(blankHeader(inr?.id || '')); setAddresses([]); setContacts([]);
+      setLastOpened(null); setMode('list');
+      onNotice?.(`Party ${no} deleted.`);
+    } catch (e) { setError(e.message); }
   }
 
   // Form keys: F2 new, F3 back to All parties, Ctrl+S save – only while this tab is the one on screen
@@ -226,6 +258,12 @@ export default function PartyMaster({ active, session, onNotice, onGo, request }
       <ControlPanel crumbs={[{ label: 'Parties', onClick: backToList }, { label: title }]}>
         <AllButton label="All parties" onClick={backToList} />
         {saved && allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
+        {saved && <ActionMenu items={[
+          allowed.includes('create') && { label: 'Duplicate', onClick: duplicate },
+          allowed.includes('edit') && { label: saved.isActive ? 'Archive' : 'Unarchive', onClick: () => setArchived(saved.isActive) },
+          allowed.includes('edit') && has('masters.party.delete') && { label: 'Delete', danger: true, onClick: remove,
+            disabled: saved.brands?.length > 0, title: saved.brands?.length ? 'This party has brands, so it can only be archived' : 'Delete this party' }
+        ]} />}
         {dirty && saved && <span className="chip chip-amber">unsaved changes</span>}
       </ControlPanel>
 

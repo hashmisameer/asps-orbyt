@@ -112,3 +112,19 @@ export async function updateBrand(user, brandId, body) {
   });
   return getBrand(user.companyId, brandId);
 }
+
+// Delete a brand nothing uses yet (no order, no style); otherwise it can only be archived (Active off)
+export async function deleteBrand(user, brandId) {
+  return withTransaction(async (db) => {
+    const b = (await db.query('SELECT initials, name FROM brands WHERE id = $1 AND company_id = $2 FOR UPDATE', [brandId, user.companyId])).rows[0];
+    if (!b) throw new AppError(404, 'Brand not found.');
+    const u = (await db.query(
+      `SELECT (SELECT COUNT(*) FROM orders WHERE brand_id = $1)::int AS orders,
+              (SELECT COUNT(*) FROM styles WHERE brand_id = $1)::int AS styles`, [brandId])).rows[0];
+    const used = [u.orders && `${u.orders} order${u.orders === 1 ? '' : 's'}`, u.styles && `${u.styles} style${u.styles === 1 ? '' : 's'}`].filter(Boolean);
+    if (used.length) throw new AppError(400, `Brand ${b.initials} is used in ${used.join(' and ')}, so it can't be deleted. Archive it instead (Active off).`);
+    await db.query('DELETE FROM brands WHERE id = $1', [brandId]);
+    await audit(db, user, 'DELETE', brandId, { code: b.initials, name: b.name });
+    return { ok: true, code: b.initials };
+  });
+}

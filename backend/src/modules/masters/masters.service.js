@@ -83,7 +83,7 @@ export const MASTERS = {
   },
   // Product category screen: one style (Style no. + description) with its group, class, season and year
   style: {
-    table: 'styles', feature: 'masters.product_category', label: 'Style', order: 'code', nameColumn: 'code',
+    table: 'styles', feature: 'masters.product_category', label: 'Style', order: 'code', nameColumn: 'code', deleteFeature: 'masters.product_category.delete',
     usage: '(SELECT COUNT(*) FROM orders x WHERE x.style_id = t.id) + (SELECT COUNT(*) FROM costings x WHERE x.style_id = t.id)',
     fields: [
       { key: 'code', column: 'code', label: 'Style no.', required: true, upper: true, max: 40, unique: true },
@@ -116,7 +116,8 @@ export const MASTERS = {
     ]
   },
   item_group: {
-    table: 'item_groups', feature: 'masters.item_group', label: 'Summary item', order: 'item_type, name',
+    table: 'item_groups', feature: 'masters.item_group', label: 'Summary item', order: 'item_type, name', deleteFeature: 'masters.item_group.delete',
+    usage: '(SELECT COUNT(*) FROM items x WHERE x.group_id = t.id) + (SELECT COUNT(*) FROM costing_lines x WHERE x.item_group_id = t.id)',
     fields: [
       { key: 'itemType', column: 'item_type', label: 'Item type', required: true, options: ITEM_TYPES },
       { key: 'name', column: 'name', label: 'Summary item', required: true, upper: true, max: 120, unique: true, uniqueWith: ['item_type'] },
@@ -126,7 +127,8 @@ export const MASTERS = {
     ]
   },
   item: {
-    table: 'items', feature: 'masters.item', label: 'Item', order: 'name',
+    table: 'items', feature: 'masters.item', label: 'Item', order: 'name', deleteFeature: 'masters.item.delete',
+    usage: '(SELECT COUNT(*) FROM costing_lines x WHERE x.item_id = t.id) + (SELECT COUNT(*) FROM bom_lines x WHERE x.item_id = t.id)',
     fields: [
       { key: 'groupId', column: 'group_id', label: 'Summary item', required: true,
         ref: { table: 'item_groups', label: "initcap(item_type) || ' › ' || name", extra: 'item_type' } },

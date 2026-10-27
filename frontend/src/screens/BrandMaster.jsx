@@ -4,12 +4,13 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import RecordList from '../components/RecordList.jsx';
 import Chatter from '../components/Chatter.jsx';
-import { ControlPanel, StatusBar, Field, AllButton } from '../components/RecordBar.jsx';
+import { ControlPanel, StatusBar, Field, AllButton, ActionMenu } from '../components/RecordBar.jsx';
 
 const blank = () => ({ code: '', name: '', buyerId: '', currencyId: '', isExport: false, isActive: true });
 
-export default function BrandMaster({ active, session, onGo, request }) {
+export default function BrandMaster({ active, session, onGo, onNotice, request }) {
   const allowed = session?.permissions?.['masters.brand'] || [];
+  const has = (code) => Boolean(session?.permissions?.[code]);
   const [lookups, setLookups] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [saved, setSaved] = useState(null);
@@ -64,6 +65,32 @@ export default function BrandMaster({ active, session, onGo, request }) {
       setBusy(false);
     }
   }
+  // ---------- ⚙ Action menu ----------
+  function duplicate() {
+    if (dirty && !window.confirm('Discard the changes on this screen and make a copy?')) return;
+    const from = saved;
+    setSaved(null); setForm(f => ({ ...f, code: '', name: `${f.name} (COPY)`, isActive: true }));
+    setDirty(true); setError('');
+    setMessage(`Copy of ${from.code}. Give it its own brand code and name, then Save.`);
+  }
+  async function setArchived(off) {
+    if (dirty && !window.confirm('Discard the changes on this screen?')) return;
+    setError(''); setMessage('');
+    try {
+      load(await api(`/brands/${saved.id}`, { method: 'PUT', body: { ...form, isActive: !off } }));
+      setMessage(off ? `Brand ${saved.code} archived. It stays in old orders but can't be picked for new ones.` : `Brand ${saved.code} is active again.`);
+    } catch (e) { setError(e.message); }
+  }
+  async function remove() {
+    if (!window.confirm(`Delete brand ${saved.code} · ${saved.name}? This can't be undone.`)) return;
+    setError(''); setMessage('');
+    try {
+      await api(`/brands/${saved.id}`, { method: 'DELETE' });
+      const no = saved.code;
+      setDirty(false); setSaved(null); setForm(blank()); setLastOpened(null); setMode('list');
+      onNotice?.(`Brand ${no} deleted.`);
+    } catch (e) { setError(e.message); }
+  }
   // Picking the buyer fills currency and export from Party master (can still be changed)
   function pickBuyer(value) {
     const b = lookups.buyers.find(x => x.id === value);
@@ -114,6 +141,12 @@ export default function BrandMaster({ active, session, onGo, request }) {
       <ControlPanel crumbs={[{ label: 'Brands', onClick: backToList }, { label: title }]}>
         <AllButton label="All brands" onClick={backToList} />
         {saved && allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
+        {saved && <ActionMenu items={[
+          allowed.includes('create') && { label: 'Duplicate', onClick: duplicate },
+          allowed.includes('edit') && { label: saved.isActive ? 'Archive' : 'Unarchive', onClick: () => setArchived(saved.isActive) },
+          allowed.includes('edit') && has('masters.brand.delete') && { label: 'Delete', danger: true, onClick: remove,
+            disabled: saved.orders > 0, title: saved.orders > 0 ? 'This brand has orders, so it can only be archived' : 'Delete this brand' }
+        ]} />}
         {dirty && saved && <span className="chip chip-amber">unsaved changes</span>}
       </ControlPanel>
 

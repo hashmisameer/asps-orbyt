@@ -35,6 +35,10 @@ bomRouter.put('/order/:id', asyncHandler(async (req, res, next) => {
 }), asyncHandler(async (req, res) => {
   res.json(await bom.saveBom(req.user, idParam(req.params.id), req.body || {}));
 }));
+// Delete a draft BOM (approved ones are reopened first)
+bomRouter.delete('/order/:id', can(FEATURE, 'edit'), can('order.bom.delete', 'view'), asyncHandler(async (req, res) => {
+  res.json(await bom.deleteBom(req.user, idParam(req.params.id)));
+}));
 bomRouter.post('/order/:id/approve', can(FEATURE, 'approve'), can('order.bom.approve', 'view'), asyncHandler(async (req, res) => {
   res.json(await bom.setStatus(req.user, idParam(req.params.id), 'approved'));
 }));

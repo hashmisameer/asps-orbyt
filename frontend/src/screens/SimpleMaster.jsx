@@ -1,14 +1,14 @@
-// One screen for the item masters (Item group, Item): opens on a new record; the list opens with All …,
-// click one for its form. Untick "Active" to hide it from dropdowns (rows are never deleted).
+// One screen for the simple masters (Product category/style, Summary item, Item): opens on a new record; the list opens with All …,
+// click one for its form. ⚙ Action: Duplicate, Archive (Active off, hidden from dropdowns), Delete (only while nothing uses it).
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import RecordList from '../components/RecordList.jsx';
-import { ControlPanel, StatusBar, Field, AllButton } from '../components/RecordBar.jsx';
+import { ControlPanel, StatusBar, Field, AllButton, ActionMenu } from '../components/RecordBar.jsx';
 
 export const MASTER_SCREENS = {
   // Product category screen = the style master (as in BlueKaktus); Product group / class come from Basic masters
   style: {
-    title: 'Style', plural: 'styles', listTitle: 'Product category', feature: 'masters.product_category',
+    title: 'Style', plural: 'styles', listTitle: 'Product category', feature: 'masters.product_category', usedIn: 'orders or costings',
     fields: [
       { key: 'code', label: 'Style no.', required: true, upper: true, max: 40, hint: 'e.g. MS 0904T MAUVE TRS' },
       { key: 'name', label: 'Style description', required: true, upper: true, max: 150, hint: 'e.g. TAIL PV TEX TRS' },
@@ -23,7 +23,7 @@ export const MASTER_SCREENS = {
     ]
   },
   item_group: {
-    title: 'Summary item', plural: 'summary items', feature: 'masters.item_group',
+    title: 'Summary item', plural: 'summary items', feature: 'masters.item_group', usedIn: 'items or costings',
     fields: [
       { key: 'itemType', label: 'Item type', required: true, width: 150, options: [['fabric', 'Fabric'], ['trims', 'Trims'], ['packing', 'Packing']] },
       { key: 'name', label: 'Summary item', required: true, upper: true, max: 120, width: 340, hint: 'e.g. EXPORT PURCHASE FABRIC' },
@@ -32,7 +32,7 @@ export const MASTER_SCREENS = {
     ]
   },
   item: {
-    title: 'Item', plural: 'items', feature: 'masters.item',
+    title: 'Item', plural: 'items', feature: 'masters.item', usedIn: 'costings or BOMs',
     fields: [
       { key: 'groupId', label: 'Summary item', required: true, ref: true, width: 320 },
       { key: 'code', label: 'Item code', upper: true, max: 40, width: 140 },
@@ -55,9 +55,11 @@ const emptyFor = (cfg, refs = {}) => ({
 });
 const plural = (cfg) => cfg.plural[0].toUpperCase() + cfg.plural.slice(1);
 
-export default function SimpleMaster({ kind, active, session }) {
+export default function SimpleMaster({ kind, active, session, onNotice }) {
   const cfg = MASTER_SCREENS[kind];
-  const allowed = session?.permissions?.[cfg.feature || `masters.${kind}`] || [];
+  const feature = cfg.feature || `masters.${kind}`;
+  const allowed = session?.permissions?.[feature] || [];
+  const canDelete = allowed.includes('edit') && Boolean(session?.permissions?.[`${feature}.delete`]);
   const [refs, setRefs] = useState({});
   const [form, setForm] = useState(emptyFor(cfg));
   const [error, setError] = useState('');
@@ -119,7 +121,7 @@ export default function SimpleMaster({ kind, active, session }) {
       const saved = form.id
         ? await api(`/masters/${kind}/${form.id}`, { method: 'PUT', body: form })
         : await api(`/masters/${kind}`, { method: 'POST', body: form });
-      setForm(toForm({ ...form, ...saved }));
+      setForm(toForm({ ...form, ...saved, usedIn: form.id ? form.usedIn : 0 }));
       setDirty(false);
       setMessage(`${cfg.title} "${saved.code || saved.name}" saved.`);
     } catch (e) {
@@ -127,6 +129,33 @@ export default function SimpleMaster({ kind, active, session }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  // ---------- ⚙ Action menu ----------
+  const label = form.code || form.name;
+  function duplicate() {
+    if (dirty && !window.confirm('Discard the changes on this screen and make a copy?')) return;
+    const from = label;
+    setForm(f => ({ ...f, id: null, usedIn: 0, isActive: true, ...('code' in f ? { code: '' } : {}), name: `${f.name} (COPY)`.slice(0, 150) }));
+    setDirty(true); setError('');
+    setMessage(`Copy of ${from}.${'code' in form ? ` Give it its own ${cfg.fields.find(f => f.key === 'code').label.toLowerCase()},` : ' Change the name,'} then Save.`);
+  }
+  async function setArchived(off) {
+    setError(''); setMessage('');
+    try {
+      const r = await api(`/masters/${kind}/${form.id}`, { method: 'PUT', body: { ...form, isActive: !off } });
+      setForm(f => toForm({ ...f, ...r, usedIn: f.usedIn })); setDirty(false);
+      setMessage(off ? `${cfg.title} "${label}" archived. It stays in old records but can't be picked in new ones.` : `${cfg.title} "${label}" is active again.`);
+    } catch (e) { setError(e.message); }
+  }
+  async function remove() {
+    if (!window.confirm(`Delete ${cfg.title.toLowerCase()} "${label}"? This can't be undone.`)) return;
+    setError(''); setMessage('');
+    try {
+      await api(`/masters/${kind}/${form.id}`, { method: 'DELETE' });
+      setDirty(false); setForm(emptyFor(cfg, refs)); setLastOpened(null); setMode('list');
+      onNotice?.(`${cfg.title} "${label}" deleted.`);
+    } catch (e) { setError(e.message); }
   }
 
   useEffect(() => {
@@ -179,6 +208,13 @@ export default function SimpleMaster({ kind, active, session }) {
       <ControlPanel crumbs={[{ label: (cfg.listTitle || plural(cfg)), onClick: backToList }, { label: title }]}>
         <AllButton label={`All ${cfg.plural}`} onClick={backToList} />
         {form.id && allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
+        {form.id && <ActionMenu items={[
+          allowed.includes('create') && { label: 'Duplicate', onClick: duplicate },
+          allowed.includes('edit') && { label: form.isActive ? 'Archive' : 'Unarchive', onClick: () => setArchived(form.isActive),
+            disabled: dirty, title: dirty ? 'Save or discard your changes first' : undefined },
+          canDelete && { label: 'Delete', danger: true, onClick: remove, disabled: form.usedIn > 0,
+            title: form.usedIn > 0 ? `Used in ${cfg.usedIn}, so it can only be archived` : `Delete this ${cfg.title.toLowerCase()}` }
+        ]} />}
         {dirty && form.id && <span className="chip chip-amber">unsaved changes</span>}
       </ControlPanel>
       <div className="o-form">

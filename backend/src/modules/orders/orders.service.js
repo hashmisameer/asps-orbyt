@@ -129,22 +129,19 @@ async function audit(db, user, action, entityId, details) {
 // ---------- public functions ----------
 
 export async function getLookups(companyId) {
-  const [brands, cats, styles, colours] = await Promise.all([
+  const [brands, styles, colours] = await Promise.all([
     query('SELECT id, name, initials FROM brands WHERE company_id = $1 AND is_active ORDER BY name', [companyId]),
-    query(`SELECT c.id, c.name, p.name AS parent
-             FROM product_categories c LEFT JOIN product_categories p ON p.id = c.parent_id
-            WHERE c.company_id = $1 AND c.is_active
-              AND NOT EXISTS (SELECT 1 FROM product_categories k WHERE k.parent_id = c.id AND k.is_active)
-            ORDER BY p.name NULLS FIRST, c.name`, [companyId]),
-    query('SELECT id, code, name, brand_id FROM styles WHERE company_id = $1 AND is_active ORDER BY code', [companyId]),
+    // A style brings its Product group and Product class (from the Product category screen)
+    query(`SELECT s.id, s.code, s.name, s.brand_id, g.name AS group_name, k.name AS class_name
+             FROM styles s LEFT JOIN product_groups g ON g.id = s.product_group_id LEFT JOIN product_classes k ON k.id = s.product_class_id
+            WHERE s.company_id = $1 AND s.is_active ORDER BY s.code`, [companyId]),
     query('SELECT id, name FROM colours WHERE company_id = $1 AND is_active ORDER BY name', [companyId])
   ]);
   const ranges = await sizeRangeMap(pool, companyId);
   const fy = (await query('SELECT label, short_label FROM financial_years WHERE company_id = $1 AND is_current LIMIT 1', [companyId]))[0];
   return {
     brands,
-    productCategories: cats.map(c => ({ id: c.id, name: c.parent ? `${c.parent} › ${c.name}` : c.name })),
-    styles: styles.map(s => ({ id: s.id, code: s.code, name: s.name, brandId: s.brand_id })),
+    styles: styles.map(s => ({ id: s.id, code: s.code, name: s.name, brandId: s.brand_id, productGroup: s.group_name || '', productClass: s.class_name || '' })),
     colours,
     sizeRanges: Object.values(ranges),
     financialYear: fy ? { label: fy.label, short: fy.short_label } : null
@@ -168,16 +165,10 @@ export async function previewNumbers(companyId, brandId, count) {
 export async function createOrder(user, body) {
   return withTransaction(async (db) => {
     const brandId = toInt(body.brandId);
-    const categoryId = toInt(body.productCategoryId);
     const styleId = toInt(body.styleId);
     const missing = [];
     if (!(await existsFor(db, 'brands', user.companyId, brandId))) missing.push('brand');
-    // Only the last level can be picked (Men › Shirts, not just Men)
-    const leaf = Number.isInteger(categoryId) && (await db.query(
-      `SELECT 1 FROM product_categories c WHERE c.id = $1 AND c.company_id = $2 AND c.is_active
-          AND NOT EXISTS (SELECT 1 FROM product_categories k WHERE k.parent_id = c.id AND k.is_active)`,
-      [categoryId, user.companyId])).rows.length > 0;
-    if (!leaf) missing.push('product category');
+    // Product group and class come with the style, so the order doesn't ask for a category
     if (!(await existsFor(db, 'styles', user.companyId, styleId))) missing.push('style');
     if (!DEVIATIONS.includes(String(body.allowedDeviation))) missing.push('allowed deviation');
     if (missing.length) throw new AppError(400, `Order header: fill in ${missing.join(', ')}.`);
@@ -193,9 +184,9 @@ export async function createOrder(user, body) {
     const initials = (await db.query('SELECT initials FROM brands WHERE id = $1', [brandId])).rows[0].initials;
 
     const orderId = (await db.query(
-      `INSERT INTO orders (company_id, unit_id, brand_id, product_category_id, style_id, allowed_deviation, remarks, created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8) RETURNING id`,
-      [user.companyId, user.unitId, brandId, categoryId, styleId, String(body.allowedDeviation), (body.remarks || '').trim() || null, user.id])).rows[0].id;
+      `INSERT INTO orders (company_id, unit_id, brand_id, style_id, allowed_deviation, remarks, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING id`,
+      [user.companyId, user.unitId, brandId, styleId, String(body.allowedDeviation), (body.remarks || '').trim() || null, user.id])).rows[0].id;
 
     for (let i = 0; i < clean.length; i++) {
       const orderNo = await takeOrderNumber(db, user.companyId, fy, initials);
@@ -273,10 +264,15 @@ export async function getOrder(companyId, orderId) {
   const o = (await query(
     `SELECT o.id, o.brand_id, b.name AS brand_name, b.initials, o.product_category_id, o.style_id,
             s.code AS style_code, s.name AS style_name, o.allowed_deviation, o.remarks, o.status,
-            o.created_at, o.updated_at, cu.username AS created_by
+            o.created_at, o.updated_at, cu.username AS created_by, g.name AS group_name, k.name AS class_name,
+            CASE WHEN pc.id IS NULL THEN c.name ELSE pc.name || ' › ' || c.name END AS old_category
        FROM orders o
        JOIN brands b ON b.id = o.brand_id
        JOIN styles s ON s.id = o.style_id
+       LEFT JOIN product_groups g ON g.id = s.product_group_id
+       LEFT JOIN product_classes k ON k.id = s.product_class_id
+       LEFT JOIN product_categories c ON c.id = o.product_category_id
+       LEFT JOIN product_categories pc ON pc.id = c.parent_id
        LEFT JOIN users cu ON cu.id = o.created_by
       WHERE o.id = $1 AND o.company_id = $2`, [orderId, companyId]))[0];
   if (!o) throw new AppError(404, 'Order not found.');
@@ -302,6 +298,7 @@ export async function getOrder(companyId, orderId) {
     id: o.id,
     brandId: o.brand_id, brandName: o.brand_name, brandInitials: o.initials,
     productCategoryId: o.product_category_id,
+    productGroup: o.group_name || '', productClass: o.class_name || '', oldCategory: o.old_category || '',
     styleId: o.style_id, styleCode: o.style_code, styleName: o.style_name,
     allowedDeviation: o.allowed_deviation, remarks: o.remarks, status: o.status,
     createdBy: o.created_by, createdAt: o.created_at, updatedAt: o.updated_at,
@@ -331,7 +328,8 @@ export async function listOrders(companyId, filters = {}) {
   const rows = await query(
     `SELECT * FROM (
      SELECT o.id, o.brand_id, b.name AS brand, s.code AS style_code, s.name AS style_name,
-            CASE WHEN pc.id IS NULL THEN c.name ELSE pc.name || ' › ' || c.name END AS category,
+            COALESCE(NULLIF(concat_ws(' › ', g.name, k.name), ''),
+                     CASE WHEN pc.id IS NULL THEN c.name ELSE pc.name || ' › ' || c.name END) AS category,
             COUNT(l.id)::int AS lines, COALESCE(SUM(l.total_qty), 0)::int AS total_qty,
             MIN(l.order_no) AS first_order_no, MAX(l.order_no) AS last_order_no,
             STRING_AGG(DISTINCT l.buyer_po_no, ', ') AS buyer_pos,
@@ -345,8 +343,10 @@ export async function listOrders(companyId, filters = {}) {
        FROM orders o
        JOIN brands b ON b.id = o.brand_id
        JOIN styles s ON s.id = o.style_id
-       JOIN product_categories c ON c.id = o.product_category_id
+       LEFT JOIN product_categories c ON c.id = o.product_category_id
        LEFT JOIN product_categories pc ON pc.id = c.parent_id
+       LEFT JOIN product_groups g ON g.id = s.product_group_id
+       LEFT JOIN product_classes k ON k.id = s.product_class_id
        LEFT JOIN order_lines l ON l.order_id = o.id
       WHERE o.company_id = $1
         AND ($3::bigint IS NULL OR o.brand_id = $3)
@@ -355,8 +355,9 @@ export async function listOrders(companyId, filters = {}) {
         AND ($2 = '' OR EXISTS (
               SELECT 1 FROM order_lines x
                WHERE x.order_id = o.id AND (x.order_no ILIKE '%' || $2 || '%' OR x.buyer_po_no ILIKE '%' || $2 || '%'))
-             OR b.name ILIKE '%' || $2 || '%' OR s.code ILIKE '%' || $2 || '%' OR s.name ILIKE '%' || $2 || '%')
-      GROUP BY o.id, b.name, s.code, s.name, c.name, pc.id, pc.name
+             OR b.name ILIKE '%' || $2 || '%' OR s.code ILIKE '%' || $2 || '%' OR s.name ILIKE '%' || $2 || '%'
+             OR g.name ILIKE '%' || $2 || '%' OR k.name ILIKE '%' || $2 || '%')
+      GROUP BY o.id, b.name, s.code, s.name, c.name, pc.id, pc.name, g.name, k.name
      ) t
      WHERE ($6 = '' OR ($6 = 'soon' AND first_ex_date <= CURRENT_DATE + 90)
                     OR ($6 = 'nocosting' AND final_lines < lines)

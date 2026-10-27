@@ -1,5 +1,5 @@
 // Order entry (v2 – multi-line grid)
-// Header: brand, product category, style, allowed deviation.
+// Header: brand, style (its product group and class come with it), allowed deviation.
 // Lines: one row per order no., with dispatch mode, buyer PO, colour, size range, size-wise qty and dates.
 // After saving, only buyer PO no., size range and quantities can change.
 import { daysTo } from '../components/FlowStrip.jsx';
@@ -42,7 +42,7 @@ const fromServer = (l) => ({
   manualTotal: l.sizeRangeId ? '' : String(l.totalQty), exFactoryDate: l.exFactoryDate, fobDate: l.fobDate
 });
 
-const blankHeader = () => ({ brandId: '', productCategoryId: '', styleId: '', styleText: '', deviation: '2', remarks: '' });
+const blankHeader = () => ({ brandId: '', styleId: '', styleText: '', deviation: '2', remarks: '' });
 
 // Where the whole order stands, counted over its lines
 function orderState(flow) {
@@ -168,7 +168,6 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
     if (!order) {
       const miss = [];
       if (!header.brandId) miss.push('brand');
-      if (!header.productCategoryId) miss.push('product category');
       if (!header.styleId) miss.push('style');
       if (miss.length) list.push(`Header: ${miss.join(', ')}`);
     }
@@ -221,7 +220,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
         saved = await api('/orders', {
           method: 'POST',
           body: {
-            brandId: Number(header.brandId), productCategoryId: Number(header.productCategoryId), styleId: Number(header.styleId),
+            brandId: Number(header.brandId), styleId: Number(header.styleId),
             allowedDeviation: header.deviation, remarks: header.remarks, lines: lines.map(toPayload)
           }
         });
@@ -292,7 +291,10 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   if (!lookups) return <div className="hint" style={{ padding: 8 }}>Loading order screen…</div>;
 
   const brandName = (id) => lookups.brands.find(b => String(b.id) === String(id))?.name || '';
-  const categoryName = (id) => lookups.productCategories.find(c => String(c.id) === String(id))?.name || '';
+  // Product group and class of the style (from the Product category screen)
+  const pickedStyle = lookups.styles.find(x => String(x.id) === String(header.styleId));
+  const groupOf = order ? order.productGroup : pickedStyle?.productGroup || '';
+  const classOf = order ? order.productClass : pickedStyle?.productClass || '';
   let previewIndex = 0;
 
   if (mode === 'list') {
@@ -368,12 +370,6 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
                     {lookups.brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 ), { req: true, title: 'The brand initials go into each order no.' })}
-                {cell('Product category', order ? categoryName(order.productCategoryId) : (
-                  <select aria-label="Product category" className={`inp ${tried && !header.productCategoryId ? 'bad' : ''}`} value={header.productCategoryId} onChange={e => setHeader(h => ({ ...h, productCategoryId: e.target.value }))}>
-                    <option value="">Select category</option>
-                    {lookups.productCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                ), { req: true })}
                 {cell('Style', order ? `${order.styleCode} · ${order.styleName}` : (
                   <>
                     <input aria-label="Style" className={`inp ${tried && !header.styleId ? 'bad' : ''}`} list="order-styles" placeholder="Type to search style"
@@ -382,7 +378,9 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
                       {stylesForBrand.map(s => <option key={s.id} value={`${s.code} · ${s.name}`} />)}
                     </datalist>
                   </>
-                ), { req: true, title: 'Styles created on the Style screen show here' })}
+                ), { req: true, title: 'Styles made on Order › Product category show here' })}
+                {cell('Product group', groupOf || <span className="muted">{order?.oldCategory || (header.styleId ? 'Not set on the style' : 'Comes with the style')}</span>)}
+                {cell('Product class', classOf || <span className="muted">{header.styleId || order ? 'Not set on the style' : 'Comes with the style'}</span>)}
               </div>
               <div>
                 {cell('Allowed deviation', order ? (order.allowedDeviation === 'open' ? 'Open (no limit)' : `${order.allowedDeviation}%`) : (

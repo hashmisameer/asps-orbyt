@@ -118,7 +118,7 @@ export default function OrderList({ active, onOpen, onNew, state, setState, high
           <table className="og o-ltable">
             <thead>
               <tr>
-                <th>Order no.</th>{!group && <th>Brand</th>}<th>Style</th><th>Category</th>
+                <th>Order no.</th>{!group && <th>Brand</th>}<th>Style</th><th>Product group › class</th>
                 <th className="num">Lines</th><th className="num">Qty</th><th>First ex-factory</th><th>Final costing</th><th>BOM approved</th>
               </tr>
             </thead>

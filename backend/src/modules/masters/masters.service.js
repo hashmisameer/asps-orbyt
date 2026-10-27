@@ -57,7 +57,7 @@ export const MASTERS = {
     usage: '(SELECT COUNT(*) FROM costings x WHERE x.year_id = t.id)',
     fields: [
       { key: 'name', column: 'name', label: 'Year', required: true, max: 7, unique: true, check: checkYear },
-      { key: 'priority', column: 'priority', label: 'Priority', number: true, integer: true }
+      { key: 'priority', column: 'priority', label: 'Priority', number: true, integer: true, uniqueAtEnd: true }
     ]
   },
   season: {
@@ -177,8 +177,11 @@ export async function list(m, companyId) {
   return { rows: rows.map(r => toRow(m, r)), refs };
 }
 
+// Pool as a "db" (same shape as a transaction client)
+const poolDb = { query: (t, p) => query(t, p).then(rows => ({ rows })) };
+
 // Checks the form and returns { column: value } ready to save
-async function read(m, companyId, body, id = null) {
+async function read(m, companyId, body, id = null, db = poolDb) {
   const values = {};
   const problems = [];
   for (const f of m.fields) {
@@ -192,7 +195,7 @@ async function read(m, companyId, body, id = null) {
       if (f.integer && !Number.isInteger(v)) { problems.push(`${f.label.toLowerCase()} (a whole number)`); continue; }
     } else if (f.ref) {
       if (empty) { if (f.required) problems.push(f.label.toLowerCase()); else values[f.column] = null; continue; }
-      const ok = (await query(`SELECT 1 FROM ${f.ref.table} WHERE id = $1 AND company_id = $2`, [Number(v), companyId])).length;
+      const ok = (await db.query(`SELECT 1 FROM ${f.ref.table} WHERE id = $1 AND company_id = $2`, [Number(v), companyId])).rows.length;
       if (!/^\d+$/.test(String(v)) || !ok) { problems.push(`a valid ${f.label.toLowerCase()}`); continue; }
       v = Number(v);
     } else {
@@ -211,61 +214,117 @@ async function read(m, companyId, body, id = null) {
   for (const f of m.fields.filter(x => x.unique && values[x.column] !== null)) {
     const withCols = f.uniqueWith || [];
     const params = [companyId, values[f.column], id, ...withCols.map(c => values[c])];
-    const dup = await query(
+    const dup = (await db.query(
       `SELECT 1 FROM ${m.table} WHERE company_id = $1 AND lower(${f.column}::text) = lower($2) AND ($3::bigint IS NULL OR id <> $3)
-         ${withCols.map((c, i) => `AND ${c} = $${i + 4}`).join(' ')}`, params);
+         ${withCols.map((c, i) => `AND ${c} = $${i + 4}`).join(' ')}`, params)).rows;
     if (dup.length) throw new AppError(400, `${f.label} "${values[f.column]}" already exists.`);
   }
   return values;
 }
 
-async function audit(user, action, entity, id, details) {
-  await query('INSERT INTO audit_log (company_id, user_id, action, entity, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
+// Fields that must differ between rows, checked once everything is written (so two rows can swap, e.g. priority 1 <-> 2)
+async function checkUniqueAtEnd(m, db, companyId) {
+  for (const f of m.fields.filter(x => x.uniqueAtEnd)) {
+    const clash = (await db.query(
+      `SELECT ${f.column} AS v, string_agg(${m.nameColumn || 'name'}, ' and ' ORDER BY ${m.nameColumn || 'name'}) AS names
+         FROM ${m.table} WHERE company_id = $1 AND ${f.column} IS NOT NULL
+        GROUP BY ${f.column} HAVING COUNT(*) > 1 ORDER BY 1 LIMIT 1`, [companyId])).rows[0];
+    if (clash) {
+      throw new AppError(400, `${f.label} ${clash.v} is given to both ${clash.names}. Give each ${m.label.toLowerCase()} a different ${f.label.toLowerCase()} (or leave it empty), then save.`);
+    }
+  }
+}
+
+async function audit(db, user, action, entity, id, details) {
+  await db.query('INSERT INTO audit_log (company_id, user_id, action, entity, entity_id, details) VALUES ($1, $2, $3, $4, $5, $6)',
     [user.companyId, user.id, action, entity, String(id), JSON.stringify(details)]);
 }
 
-export async function create(m, user, body) {
-  const values = await read(m, user.companyId, body);
+// ---------- write one row (inside a transaction) ----------
+async function createIn(db, m, user, body) {
+  const values = await read(m, user.companyId, body, null, db);
   const sizes = m.hasSizes ? readSizes(body) : null;
   const cols = Object.keys(values);
-  const row = await withTransaction(async (db) => {
-    const r = (await db.query(
-      `INSERT INTO ${m.table} (company_id, ${cols.join(', ')}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(', ')}) RETURNING *`,
-      [user.companyId, ...cols.map(c => values[c])])).rows[0];
-    if (sizes) { await saveSizes(db, r.id, sizes); r.sizes = sizes; }
-    return r;
-  });
-  await audit(user, 'CREATE', m.table, row.id, sizes ? { ...values, sizes } : values);
-  return toRow(m, row);
+  const r = (await db.query(
+    `INSERT INTO ${m.table} (company_id, ${cols.join(', ')}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(', ')}) RETURNING *`,
+    [user.companyId, ...cols.map(c => values[c])])).rows[0];
+  if (sizes) { await saveSizes(db, r.id, sizes); r.sizes = sizes; }
+  await audit(db, user, 'CREATE', m.table, r.id, sizes ? { ...values, sizes } : values);
+  return r;
 }
 
-export async function update(m, user, id, body) {
-  const values = await read(m, user.companyId, body, id);
+async function updateIn(db, m, user, id, body) {
+  const values = await read(m, user.companyId, body, id, db);
   values.is_active = body.isActive !== false;
   const sizes = m.hasSizes ? readSizes(body) : null;
   const cols = Object.keys(values);
-  const row = await withTransaction(async (db) => {
-    const r = (await db.query(
-      `UPDATE ${m.table} SET ${cols.map((c, i) => `${c} = $${i + 3}`).join(', ')} WHERE id = $1 AND company_id = $2 RETURNING *`,
-      [id, user.companyId, ...cols.map(c => values[c])])).rows[0];
-    if (!r) throw new AppError(404, `${m.label} not found.`);
-    if (sizes) { await saveSizes(db, r.id, sizes); r.sizes = sizes; }
-    return r;
-  });
-  await audit(user, 'UPDATE', m.table, id, sizes ? { ...values, sizes } : values);
-  return toRow(m, row);
+  const r = (await db.query(
+    `UPDATE ${m.table} SET ${cols.map((c, i) => `${c} = $${i + 3}`).join(', ')} WHERE id = $1 AND company_id = $2 RETURNING *`,
+    [id, user.companyId, ...cols.map(c => values[c])])).rows[0];
+  if (!r) throw new AppError(404, `${m.label} not found.`);
+  if (sizes) { await saveSizes(db, r.id, sizes); r.sizes = sizes; }
+  await audit(db, user, 'UPDATE', m.table, id, sizes ? { ...values, sizes } : values);
+  return r;
 }
 
 // Delete a row that nothing uses yet; a used row can only be switched off (Active)
-export async function remove(m, user, id) {
+async function removeIn(db, m, user, id) {
   if (!m.usage) throw new AppError(400, `${m.label} rows can't be deleted. Switch off Active instead.`);
-  const r = (await query(
-    `SELECT t.id, (${m.usage}) AS used_in FROM ${m.table} t WHERE t.id = $1 AND t.company_id = $2`, [id, user.companyId]))[0];
+  const r = (await db.query(
+    `SELECT t.id, (${m.usage}) AS used_in FROM ${m.table} t WHERE t.id = $1 AND t.company_id = $2`, [id, user.companyId])).rows[0];
   if (!r) throw new AppError(404, `${m.label} not found.`);
   if (Number(r.used_in) > 0) {
     throw new AppError(400, `This ${m.label.toLowerCase()} is used in ${r.used_in} record${Number(r.used_in) === 1 ? '' : 's'}, so it can't be deleted. Switch off Active instead.`);
   }
-  await query(`DELETE FROM ${m.table} WHERE id = $1 AND company_id = $2`, [id, user.companyId]);
-  await audit(user, 'DELETE', m.table, id, {});
+  await db.query(`DELETE FROM ${m.table} WHERE id = $1 AND company_id = $2`, [id, user.companyId]);
+  await audit(db, user, 'DELETE', m.table, id, {});
+}
+
+// ---------- API ----------
+export async function create(m, user, body) {
+  const row = await withTransaction(async (db) => {
+    const r = await createIn(db, m, user, body);
+    await checkUniqueAtEnd(m, db, user.companyId);
+    return r;
+  });
+  return toRow(m, row);
+}
+
+export async function update(m, user, id, body) {
+  const row = await withTransaction(async (db) => {
+    const r = await updateIn(db, m, user, id, body);
+    await checkUniqueAtEnd(m, db, user.companyId);
+    return r;
+  });
+  return toRow(m, row);
+}
+
+export async function remove(m, user, id) {
+  await withTransaction(db => removeIn(db, m, user, id));
   return { ok: true };
+}
+
+// Save a whole list at once (Basic masters "Save"): deletes, changes and new rows in one go – all or nothing.
+// body = { remove: [id, …], save: [{ id?, …fields }, …] }
+export async function saveBatch(m, user, body) {
+  const removeIds = (Array.isArray(body.remove) ? body.remove : []).map(Number).filter(n => Number.isInteger(n) && n > 0);
+  const rows = Array.isArray(body.save) ? body.save : [];
+  if (rows.length > 500) throw new AppError(400, 'Save up to 500 rows at a time.');
+  await withTransaction(async (db) => {
+    for (const id of removeIds) await removeIn(db, m, user, id);
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i] || {};
+      try {
+        if (r.id) await updateIn(db, m, user, Number(r.id), r);
+        else await createIn(db, m, user, r);
+      } catch (err) {
+        // Say which row, e.g. "Row 3 (2027-28): …"
+        const name = r.name || r.code || '';
+        if (err instanceof AppError) err.message = `Row ${r.rowNo || i + 1}${name ? ` (${name})` : ''}: ${err.message}`;
+        throw err;
+      }
+    }
+    await checkUniqueAtEnd(m, db, user.companyId);
+  });
+  return list(m, user.companyId);
 }

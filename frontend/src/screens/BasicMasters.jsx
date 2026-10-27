@@ -1,6 +1,6 @@
 // Basic masters: Colour, Size range, UOM, Year, Season and Currency on one screen.
 // Left: the five masters with a count. Right: the rows of the one picked, changed right in the table.
-// "+ Add a line" adds a row; Save (Ctrl+S) saves every changed row at once; Discard throws the changes away.
+// "+ Add a line" adds a row; Save (Ctrl+S) saves the whole list at once (all or nothing); Discard throws the changes away.
 // A row used in orders or costings can only be switched off (Active), not deleted.
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
@@ -18,7 +18,7 @@ const KINDS = [
       { key: 'allowDecimals', label: 'Decimals allowed', yesNo: true, width: 170 }] },
   { id: 'year', name: 'Year', plural: 'years', hint: 'April to March, e.g. 2026-27. Priority 1 shows first in every Year dropdown',
     cols: [{ key: 'name', label: 'Year', max: 7, width: 220, placeholder: 'e.g. 2026-27' },
-      { key: 'priority', label: 'Priority', number: true, integer: true, optional: true, width: 150, placeholder: '1 = top' }] },
+      { key: 'priority', label: 'Priority', number: true, integer: true, optional: true, distinct: true, width: 150, placeholder: '1 = top' }] },
   { id: 'season', name: 'Season', plural: 'seasons', hint: 'Seasons picked on costings, e.g. Spring Summer',
     cols: [{ key: 'name', label: 'Season', max: 60 }] },
   { id: 'currency', name: 'Currency', plural: 'currencies', hint: 'Rate in rupees is the suggested rate for new costings',
@@ -115,25 +115,43 @@ export default function BasicMasters({ active, session }) {
     load(kindId);
   }
 
+  // Columns that must differ between rows (Year priority): checked on screen first, with a clear message
+  function clashOnScreen() {
+    for (const c of kind.cols.filter(x => x.distinct)) {
+      const seen = {};
+      for (const r of list) {
+        const v = String(r[c.key] ?? '').trim();
+        if (!v) continue;
+        if (seen[v]) {
+          const other = seen[v];
+          return other.dirty && !r.dirty
+            ? `${c.label} ${v} is already given to ${r.name}. Change the ${c.label.toLowerCase()} of ${r.name} first (for example to ${Number(v) + 1}), then save.`
+            : !other.dirty && r.dirty
+              ? `${c.label} ${v} is already given to ${other.name}. Change the ${c.label.toLowerCase()} of ${other.name} first (for example to ${Number(v) + 1}), then save.`
+              : `${c.label} ${v} is given to both ${other.name || 'a new row'} and ${r.name || 'a new row'}. Give each a different ${c.label.toLowerCase()}.`;
+        }
+        seen[v] = r;
+      }
+    }
+    return '';
+  }
+
+  // Save the whole list in one go: all changes are saved, or none (the server checks everything again)
   async function save() {
     if (busy || !dirty) return;
-    setBusy(true); setError(''); setMessage('');
-    let done = 0;
+    setError(''); setMessage('');
+    const clash = clashOnScreen();
+    if (clash) { setError(clash); return; }
+    setBusy(true);
+    const changed = list.map((r, i) => ({ ...r, rowNo: i + 1 })).filter(r => r.dirty);
+    const count = changed.length + removed.length;
     try {
-      for (const id of removed) { await api(`/masters/${kindId}/${id}`, { method: 'DELETE' }); done += 1; }
+      const r = await api(`/masters/${kindId}/batch`, { method: 'POST', body: { remove: removed, save: changed } });
+      setRows(all => ({ ...all, [kindId]: r.rows.map(fromServer) }));
       setRemoved([]);
-      for (const r of list.filter(x => x.dirty)) {
-        const body = { ...r };
-        const saved = r.id
-          ? await api(`/masters/${kindId}/${r.id}`, { method: 'PUT', body })
-          : await api(`/masters/${kindId}`, { method: 'POST', body });
-        done += 1;
-        setRows(all => ({ ...all, [kindId]: all[kindId].map(x => (x.key === r.key ? { ...fromServer(saved), key: r.key } : x)) }));
-      }
-      setMessage(`${kind.name}: ${done} change${done === 1 ? '' : 's'} saved.`);
-      load(kindId);
+      setMessage(`${kind.name}: ${count} change${count === 1 ? '' : 's'} saved.`);
     } catch (e) {
-      setError(`${e.message}${done ? ` (${done} change${done === 1 ? '' : 's'} before this were saved)` : ''}`);
+      setError(`${e.message} Nothing was saved; fix it and save again.`);
     } finally {
       setBusy(false);
     }

@@ -49,7 +49,7 @@ export function calcTotals(lines, orderQty) {
 
 // ---------- dropdown data ----------
 export async function getLookups(companyId) {
-  const [buyers, styles, seasons, currencies, colours, ranges, lines] = await Promise.all([
+  const [buyers, styles, seasons, currencies, colours, ranges, yearRows, lines] = await Promise.all([
     // Buyers come from Party master (type Buyer or Both)
     query(`SELECT id, code, name, currency_id FROM parties WHERE company_id = $1 AND is_active AND party_type IN ('buyer', 'both') ORDER BY name`, [companyId]),
     query('SELECT id, code, name FROM styles WHERE company_id = $1 AND is_active ORDER BY code', [companyId]),
@@ -57,13 +57,14 @@ export async function getLookups(companyId) {
     query('SELECT id, code, name, rate_to_inr FROM currencies WHERE company_id = $1 AND is_active ORDER BY code', [companyId]),
     query('SELECT id, name FROM colours WHERE company_id = $1 AND is_active ORDER BY name', [companyId]),
     query('SELECT id, name FROM size_ranges WHERE company_id = $1 AND is_active ORDER BY name', [companyId]),
+    // Year master: priority 1 first, then 2, 3 …, then the rest newest first
+    query('SELECT id, name FROM years WHERE company_id = $1 AND is_active ORDER BY priority NULLS LAST, name DESC', [companyId]),
     query(
       `SELECT l.id, l.order_no, o.style_id, l.colour_id, l.size_range_id, l.total_qty, l.dispatch_mode,
               to_char(l.fob_date, 'YYYY-MM-DD') AS fob_date
          FROM order_lines l JOIN orders o ON o.id = l.order_id
         WHERE l.company_id = $1 ORDER BY l.created_at DESC LIMIT 1000`, [companyId])
   ]);
-  const year = new Date().getFullYear();
   return {
     buyers, styles, seasons, colours, sizeRanges: ranges,
     currencies: currencies.map(c => ({ id: c.id, code: c.code, name: c.name, rate: Number(c.rate_to_inr) })),
@@ -71,7 +72,7 @@ export async function getLookups(companyId) {
       id: l.id, orderNo: l.order_no, styleId: l.style_id, colourId: l.colour_id, sizeRangeId: l.size_range_id,
       qty: l.total_qty, shipMode: l.dispatch_mode, deliveryDate: l.fob_date
     })),
-    years: [year - 1, year, year + 1, year + 2]
+    years: yearRows.map(y => ({ id: y.id, name: y.name }))
   };
 }
 
@@ -150,7 +151,7 @@ export async function getCosting(companyId, costingId, db = pool) {
     id: c.id, costingNo: c.costing_no, revision: c.revision, costingDate: c.date_s, type: c.costing_type,
     description: c.description || '', buyerId: c.buyer_id, styleId: c.style_id, orderLineId: c.order_line_id,
     orderNo: c.order_no || '', deliveryDate: c.delivery_s || '', sizeRangeId: c.size_range_id || '', orderQty: c.order_qty,
-    shipMode: c.ship_mode, seasonId: c.season_id || '', year: c.year || '', colourId: c.colour_id || '',
+    shipMode: c.ship_mode, seasonId: c.season_id || '', yearId: c.year_id || '', colourId: c.colour_id || '',
     currencyId: c.currency_id, conversionRate: Number(c.conversion_rate), baseAmount: Number(c.base_amount),
     totalAmount: Number(c.total_amount), remarks: c.remarks || '', updatedBy: c.updated_by_name, updatedAt: c.updated_at,
     lines: lines.map(l => ({
@@ -182,7 +183,7 @@ async function readCosting(db, companyId, body) {
   const h = {
     type: body.type, description: text(body.description, 500), buyerId: id(body.buyerId), styleId: id(body.styleId),
     orderLineId: id(body.orderLineId), deliveryDate: body.deliveryDate || null, sizeRangeId: id(body.sizeRangeId),
-    orderQty: num(body.orderQty), shipMode: body.shipMode, seasonId: id(body.seasonId), year: id(body.year),
+    orderQty: num(body.orderQty), shipMode: body.shipMode, seasonId: id(body.seasonId), yearId: id(body.yearId),
     colourId: id(body.colourId), currencyId: id(body.currencyId), conversionRate: num(body.conversionRate),
     remarks: text(body.remarks, 1000)
   };
@@ -210,7 +211,7 @@ async function readCosting(db, companyId, body) {
   if (h.sizeRangeId && !(await belongs(db, 'size_ranges', companyId, h.sizeRangeId))) throw new AppError(400, 'Pick a valid size range.');
   if (h.seasonId && !(await belongs(db, 'seasons', companyId, h.seasonId))) throw new AppError(400, 'Pick a valid season.');
   if (h.colourId && !(await belongs(db, 'colours', companyId, h.colourId))) throw new AppError(400, 'Pick a valid colour.');
-  if (h.year && (h.year < 2000 || h.year > 2100)) throw new AppError(400, 'Pick a valid year.');
+  if (h.yearId && !(await belongs(db, 'years', companyId, h.yearId))) throw new AppError(400, 'Pick a valid year.');
 
   // Grid lines: skip rows that are completely empty, check the numbers in the rest
   const raw = Array.isArray(body.lines) ? body.lines : [];
@@ -315,12 +316,12 @@ export async function createCosting(user, body, { canApprove }) {
       const costingNo = await nextCostingNo(db, user.companyId);
       const costingId = (await db.query(
         `INSERT INTO costings (company_id, costing_no, revision, costing_date, costing_type, description, buyer_id, style_id, order_line_id,
-                               delivery_date, size_range_id, order_qty, ship_mode, season_id, year, colour_id, currency_id, conversion_rate,
+                               delivery_date, size_range_id, order_qty, ship_mode, season_id, year_id, colour_id, currency_id, conversion_rate,
                                base_amount, total_amount, remarks, created_by, updated_by)
          VALUES ($1, $2, 1, CURRENT_DATE, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $20)
          RETURNING id`,
         [user.companyId, costingNo, h.type, h.description, h.buyerId, h.styleId, h.orderLineId, h.deliveryDate, h.sizeRangeId,
-          h.orderQty, h.shipMode, h.seasonId, h.year, h.colourId, h.currencyId, h.conversionRate, totals.base, totals.total,
+          h.orderQty, h.shipMode, h.seasonId, h.yearId, h.colourId, h.currencyId, h.conversionRate, totals.base, totals.total,
           h.remarks, user.id])).rows[0].id;
       await writeLines(db, costingId, lines);
       await snapshot(db, user, user.companyId, costingId);
@@ -348,11 +349,11 @@ export async function updateCosting(user, costingId, body, { canApprove }) {
       await db.query(
         `UPDATE costings SET revision = revision + 1, costing_date = CURRENT_DATE, costing_type = $3, description = $4, buyer_id = $5,
                 style_id = $6, order_line_id = $7, delivery_date = $8, size_range_id = $9, order_qty = $10, ship_mode = $11,
-                season_id = $12, year = $13, colour_id = $14, currency_id = $15, conversion_rate = $16, base_amount = $17,
+                season_id = $12, year_id = $13, colour_id = $14, currency_id = $15, conversion_rate = $16, base_amount = $17,
                 total_amount = $18, remarks = $19, updated_by = $20, updated_at = now()
           WHERE id = $1 AND company_id = $2`,
         [costingId, user.companyId, h.type, h.description, h.buyerId, h.styleId, h.orderLineId, h.deliveryDate, h.sizeRangeId,
-          h.orderQty, h.shipMode, h.seasonId, h.year, h.colourId, h.currencyId, h.conversionRate, totals.base, totals.total,
+          h.orderQty, h.shipMode, h.seasonId, h.yearId, h.colourId, h.currencyId, h.conversionRate, totals.base, totals.total,
           h.remarks, user.id]);
       await writeLines(db, costingId, lines);
       await snapshot(db, user, user.companyId, costingId);

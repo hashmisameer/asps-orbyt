@@ -1,4 +1,4 @@
-// /api/masters/:kind  (kind = colour, size_range, uom, season, currency, item_group, item)
+// /api/masters/:kind  (kind = colour, size_range, uom, year, season, currency, item_group, item)
 import { Router } from 'express';
 import { asyncHandler, AppError } from '../../middleware/errors.js';
 import { requireAuth } from '../../middleware/auth.js';

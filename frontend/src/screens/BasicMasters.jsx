@@ -1,4 +1,4 @@
-// Basic masters: Colour, Size range, UOM, Season and Currency on one screen.
+// Basic masters: Colour, Size range, UOM, Year, Season and Currency on one screen.
 // Left: the five masters with a count. Right: the rows of the one picked, changed right in the table.
 // "+ Add a line" adds a row; Save (Ctrl+S) saves every changed row at once; Discard throws the changes away.
 // A row used in orders or costings can only be switched off (Active), not deleted.
@@ -16,6 +16,9 @@ const KINDS = [
   { id: 'uom', name: 'UOM', plural: 'units', hint: 'Units used on items, costing, BOM and purchase',
     cols: [{ key: 'code', label: 'Code', max: 10, upper: true, width: 140 }, { key: 'name', label: 'Name', max: 40 },
       { key: 'allowDecimals', label: 'Decimals allowed', yesNo: true, width: 170 }] },
+  { id: 'year', name: 'Year', plural: 'years', hint: 'April to March, e.g. 2026-27. Priority 1 shows first in every Year dropdown',
+    cols: [{ key: 'name', label: 'Year', max: 7, width: 220, placeholder: 'e.g. 2026-27' },
+      { key: 'priority', label: 'Priority', number: true, integer: true, optional: true, width: 150, placeholder: '1 = top' }] },
   { id: 'season', name: 'Season', plural: 'seasons', hint: 'Seasons picked on costings, e.g. Spring Summer',
     cols: [{ key: 'name', label: 'Season', max: 60 }] },
   { id: 'currency', name: 'Currency', plural: 'currencies', hint: 'Rate in rupees is the suggested rate for new costings',
@@ -27,7 +30,11 @@ const blankRow = (kind) => ({
   key: newKey(), id: null, isActive: true, usedIn: 0, dirty: true,
   ...Object.fromEntries(kind.cols.map(c => [c.key, c.sizes ? [] : c.yesNo ? true : '']))
 });
-const fromServer = (r) => ({ ...r, key: `s${r.id}`, dirty: false, rateToInr: r.rateToInr === undefined ? undefined : String(r.rateToInr) });
+const fromServer = (r) => ({
+  ...r, key: `s${r.id}`, dirty: false,
+  ...(r.rateToInr === undefined ? {} : { rateToInr: String(r.rateToInr) }),
+  ...(r.priority === undefined ? {} : { priority: r.priority === '' ? '' : String(r.priority) })
+});
 
 // Sizes as small boxes: type a size and press Enter (or comma) to add it; × or Backspace removes one
 function SizeEditor({ value, onChange, disabled, label }) {
@@ -179,7 +186,7 @@ export default function BasicMasters({ active, session }) {
             <thead>
               <tr>
                 <th style={{ width: 40 }}>#</th>
-                {kind.cols.map(c => <th key={c.key} className={c.number ? 'num' : ''} style={c.width ? { width: c.width } : undefined}>{c.label}{!c.yesNo && !c.sizes && <span className="req"> *</span>}</th>)}
+                {kind.cols.map(c => <th key={c.key} className={c.number ? 'num' : ''} style={c.width ? { width: c.width } : undefined}>{c.label}{!c.yesNo && !c.sizes && !c.optional && <span className="req"> *</span>}</th>)}
                 <th style={{ width: 130 }}>Used in</th>
                 <th style={{ width: 80 }}>Active</th>
                 <th style={{ width: 44 }} aria-label="Delete" />
@@ -204,8 +211,8 @@ export default function BasicMasters({ active, session }) {
                           </select>
                         ) : (
                           <input className={`ci bm-in ${c.number ? 'num' : ''}`} aria-label={c.label} disabled={ro} maxLength={c.max}
-                            inputMode={c.number ? 'decimal' : undefined} value={r[c.key] ?? ''}
-                            onChange={e => setRow(r.key, { [c.key]: c.upper ? e.target.value.toUpperCase() : e.target.value })} />
+                            inputMode={c.integer ? 'numeric' : c.number ? 'decimal' : undefined} value={r[c.key] ?? ''} placeholder={c.placeholder}
+                            onChange={e => setRow(r.key, { [c.key]: c.upper ? e.target.value.toUpperCase() : c.integer ? e.target.value.replace(/[^\d]/g, '') : e.target.value })} />
                         )}
                       </td>
                     ))}
@@ -229,7 +236,9 @@ export default function BasicMasters({ active, session }) {
           </table>
           {canCreate && <button type="button" className="o-link o-addline" onClick={addRow}>+ Add a line</button>}
           <p className="hint o-grid-hint">
-            {kindId === 'size_range'
+            {kindId === 'year'
+              ? 'Give priority 1 to the year you work in now: it shows first in every Year dropdown and new records start on it. Years without a priority come after, newest first.'
+              : kindId === 'size_range'
               ? 'Type a size and press Enter to add it. Sizes go in the order you type them. A size already used in an order can\'t be removed.'
               : 'A row used in orders or costings can\'t be deleted; switch off Active to hide it from dropdowns. Old records stay as they are.'}
           </p>

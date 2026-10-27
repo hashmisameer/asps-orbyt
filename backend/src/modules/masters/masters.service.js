@@ -7,6 +7,8 @@
 //   required, upper, min, max         text checks
 //   number                            a number (above 0 when required, empty allowed otherwise)
 //   bool                              true / false
+//   integer                           whole number (with number)
+//   check(value)                      returns an error message, or nothing when the value is fine
 // usage: SQL counting where a row (alias t) is used; a used row can only be switched off, not deleted.
 //   options: [...]                    must be one of these values
 //   ref: { table, label }             must be a row of that table in the same company; label = SQL for its name
@@ -16,6 +18,14 @@ import { AppError } from '../../middleware/errors.js';
 
 export const ITEM_TYPES = ['fabric', 'trims', 'packing'];
 export const ITEM_NATURES = ['Main', 'Contrast', 'Lining', 'Interlining', 'Pocketing', 'Other'];
+
+// "2026-27": April 2026 to March 2027, so the second part is the next year
+function checkYear(v) {
+  const m = /^(\d{4})-(\d{2})$/.exec(v);
+  if (!m) return 'Write the year like 2026-27.';
+  if ((Number(m[1]) + 1) % 100 !== Number(m[2])) return `${v} is not a valid year. After ${m[1]} comes ${m[1]}-${String((Number(m[1]) + 1) % 100).padStart(2, '0')}.`;
+  return null;
+}
 
 export const MASTERS = {
   colour: {
@@ -40,6 +50,14 @@ export const MASTERS = {
       { key: 'code', column: 'code', label: 'Code', required: true, upper: true, max: 10, unique: true },
       { key: 'name', column: 'name', label: 'Name', required: true, max: 40 },
       { key: 'allowDecimals', column: 'allow_decimals', label: 'Decimals allowed', bool: true }
+    ]
+  },
+  year: {
+    table: 'years', feature: 'masters.basic', label: 'Year', order: 'priority NULLS LAST, name DESC',
+    usage: '(SELECT COUNT(*) FROM costings x WHERE x.year_id = t.id)',
+    fields: [
+      { key: 'name', column: 'name', label: 'Year', required: true, max: 7, unique: true, check: checkYear },
+      { key: 'priority', column: 'priority', label: 'Priority', number: true, integer: true }
     ]
   },
   season: {
@@ -171,6 +189,7 @@ async function read(m, companyId, body, id = null) {
       if (empty && !f.required) { values[f.column] = null; continue; }
       v = Number(String(v ?? '').replace(/,/g, ''));
       if (!Number.isFinite(v) || v <= 0) { problems.push(`${f.label.toLowerCase()} (a number above 0)`); continue; }
+      if (f.integer && !Number.isInteger(v)) { problems.push(`${f.label.toLowerCase()} (a whole number)`); continue; }
     } else if (f.ref) {
       if (empty) { if (f.required) problems.push(f.label.toLowerCase()); else values[f.column] = null; continue; }
       const ok = (await query(`SELECT 1 FROM ${f.ref.table} WHERE id = $1 AND company_id = $2`, [Number(v), companyId])).length;
@@ -183,6 +202,7 @@ async function read(m, companyId, body, id = null) {
       if (v && f.options && !f.options.includes(v)) { problems.push(`a valid ${f.label.toLowerCase()}`); continue; }
       if (v && f.min && v.length < f.min) { problems.push(`${f.label.toLowerCase()} (${f.min} letters)`); continue; }
       if (f.max && v.length > f.max) { problems.push(`${f.label.toLowerCase()} (up to ${f.max} characters)`); continue; }
+      if (v && f.check) { const msg = f.check(v); if (msg) throw new AppError(400, msg); }
       v = v || null;
     }
     values[f.column] = v;

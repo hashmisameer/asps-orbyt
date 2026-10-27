@@ -43,9 +43,10 @@ function calc(section, l) {
   return { avgQty: r4(avgQty), rate: r4(rate), amount: r4(avgQty * rate * (n(l.exchangeRate) || 1)) };
 }
 
-const blankHeader = () => ({
+// A new costing starts on the year at the top of the Year master (priority 1)
+const blankHeader = (yearId = '') => ({
   type: 'initial', description: '', buyerId: '', styleId: '', orderLineId: '', deliveryDate: '', sizeRangeId: '',
-  orderQty: '', shipMode: '', seasonId: '', year: String(new Date().getFullYear()), colourId: '', currencyId: '', conversionRate: ''
+  orderQty: '', shipMode: '', seasonId: '', yearId, colourId: '', currencyId: '', conversionRate: ''
 });
 const blankLine = (section, inr, from = {}) => ({
   key: newKey(), section, itemId: '', itemGroupId: '', groupName: '', itemType: '', item: '', description: '', uom: '', itemNature: '',
@@ -77,7 +78,12 @@ export default function Costing({ active, session, onGo, request }) {
   const [message, setMessage] = useState('');
   const [dirty, setDirty] = useState(false);
 
-  useEffect(() => { api('/costing/lookups').then(setLookups).catch(e => setLoadError(e.message)); }, []);
+  useEffect(() => {
+    api('/costing/lookups').then(l => {
+      setLookups(l);
+      setHeader(h => (h.yearId ? h : { ...h, yearId: str(l.years[0]?.id) }));
+    }).catch(e => setLoadError(e.message));
+  }, []);
 
   // Flow strip when the costing is for an order line (reloads after save)
   useEffect(() => {
@@ -141,7 +147,7 @@ export default function Costing({ active, session, onGo, request }) {
     setHeader({
       type: c.type, description: c.description, buyerId: str(c.buyerId), styleId: str(c.styleId), orderLineId: str(c.orderLineId),
       deliveryDate: c.deliveryDate, sizeRangeId: str(c.sizeRangeId), orderQty: str(c.orderQty), shipMode: c.shipMode,
-      seasonId: str(c.seasonId), year: str(c.year), colourId: str(c.colourId), currencyId: str(c.currencyId), conversionRate: str(c.conversionRate)
+      seasonId: str(c.seasonId), yearId: str(c.yearId), colourId: str(c.colourId), currencyId: str(c.currencyId), conversionRate: str(c.conversionRate)
     });
     setLines(c.lines.map(l => blankLine(l.section, null, {
       itemId: str(l.itemId), itemGroupId: str(l.itemGroupId), groupName: l.itemId ? l.groupName : (l.itemGroupId ? 'Summary item' : ''),
@@ -157,13 +163,13 @@ export default function Costing({ active, session, onGo, request }) {
 
   function startNew() {
     if (dirty && !window.confirm('Discard the changes on this screen and start a new costing?')) return;
-    setSaved(null); setViewing(null); setHeader(blankHeader()); setLines([]); setTab('fabric'); setSheetTab('cost');
+    setSaved(null); setViewing(null); setHeader(blankHeader(str(lookups?.years[0]?.id))); setLines([]); setTab('fabric'); setSheetTab('cost');
     setError(''); setMessage(''); setDirty(false); setMode('form');
   }
   function backToList() {
     if (dirty && !window.confirm('Discard the changes on this screen and go back to the list?')) return;
     setLastOpened(saved?.id || null);
-    setSaved(null); setViewing(null); setHeader(blankHeader()); setLines([]); setTab('fabric');
+    setSaved(null); setViewing(null); setHeader(blankHeader(str(lookups?.years[0]?.id))); setLines([]); setTab('fabric');
     setError(''); setMessage(''); setDirty(false); setMode('list');
   }
 
@@ -209,7 +215,7 @@ export default function Costing({ active, session, onGo, request }) {
     try {
       await api(`/costing/${saved.id}`, { method: 'DELETE' });
       const no = saved.costingNo;
-      setDirty(false); setSaved(null); setViewing(null); setHeader(blankHeader()); setLines([]); setTab('fabric');
+      setDirty(false); setSaved(null); setViewing(null); setHeader(blankHeader(str(lookups?.years[0]?.id))); setLines([]); setTab('fabric');
       setLastOpened(null); setMode('list');
       setError(''); setMessage(`Costing ${no} deleted.`);
     } catch (e) { setError(e.message); }
@@ -366,7 +372,7 @@ export default function Costing({ active, session, onGo, request }) {
                 <Field label="Season / Year">
                   <div className="pair">
                     {sel('seasonId', lookups.seasons.map(x => ({ id: x.id, label: x.name })), 'season', { placeholder: 'Season' })}
-                    {sel('year', lookups.years.map(y => ({ id: y, label: String(y) })), 'year', { placeholder: 'Year' })}
+                    {sel('yearId', lookups.years.map(y => ({ id: y.id, label: y.name })), 'year', { placeholder: 'Year' })}
                   </div>
                 </Field>
                 <Field label="Base amount (1 pc)" title="Cost of one garment, worked out from all sections"><b>₹ {money(totals.base)}</b>{inCurrency}</Field>

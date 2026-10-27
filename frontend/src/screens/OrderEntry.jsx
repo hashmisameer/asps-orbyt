@@ -88,8 +88,8 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   const [listState, setListState] = useState({ search: '', view: '', group: true });
   const [tab, setTab] = useState('lines');
   const [lastOpened, setLastOpened] = useState(null); // order no. (line) to highlight when going back to the list
-  const [focusId, setFocusId] = useState(null);
-  const [showAll, setShowAll] = useState(false);       // grid shows every order no. of this entry (same brand and style)       // the order no. (line) on screen; lines entered with it stay one click away
+  const [focusId, setFocusId] = useState(null);         // the order no. (line) on screen; lines entered with it stay one click away
+  const [showAll, setShowAll] = useState(false);       // grid shows every order no. of this entry (same brand and style)
   const [focusKey, setFocusKey] = useState(null);   // new line to put the cursor in
   const [flow, setFlow] = useState(null);           // costing / BOM state of the saved lines
 

@@ -88,7 +88,8 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
   const [listState, setListState] = useState({ search: '', view: '', group: true });
   const [tab, setTab] = useState('lines');
   const [lastOpened, setLastOpened] = useState(null); // order no. (line) to highlight when going back to the list
-  const [focusId, setFocusId] = useState(null);       // the order no. (line) on screen; lines entered with it stay one click away
+  const [focusId, setFocusId] = useState(null);
+  const [showAll, setShowAll] = useState(false);       // grid shows every order no. of this entry (same brand and style)       // the order no. (line) on screen; lines entered with it stay one click away
   const [focusKey, setFocusKey] = useState(null);   // new line to put the cursor in
   const [flow, setFlow] = useState(null);           // costing / BOM state of the saved lines
 
@@ -125,7 +126,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
 
   const lineTotal = (l) => (l.sizeRangeId ? Object.values(l.sizes).reduce((a, v) => a + toInt(v), 0) : toInt(l.manualTotal));
   // On a saved order only the opened order no. shows (plus any new lines being added to it)
-  const shown = order && focusId ? lines.filter(l => !l.saved || l.id === focusId) : lines;
+  const shown = order && focusId && !showAll ? lines.filter(l => !l.saved || l.id === focusId) : lines;
   const grandTotal = shown.reduce((a, l) => a + lineTotal(l), 0);
   const deviation = order ? order.allowedDeviation : header.deviation;
   const maxAllowed = deviation === 'open' ? 'no limit (open)'
@@ -261,6 +262,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
       const saved = await api(`/orders/${id}`);
       loadSaved(saved);
       setFocusId(saved.lines.some(l => l.id === Number(lineId)) ? Number(lineId) : saved.lines[0]?.id || null);
+      setShowAll(false);
       setHeader(blankHeader());
       setTried(false); setProblems([]); setServerError(''); setMessage('');
       setMode('form');
@@ -278,7 +280,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
 
   function startNew() {
     if (isDirty && !window.confirm('Discard the changes on this screen and start a new order?')) return;
-    setOrder(null); setHeader(blankHeader()); setLines([blankLine()]); setFocusId(null);
+    setOrder(null); setHeader(blankHeader()); setLines([blankLine()]); setFocusId(null); setShowAll(false);
     setTried(false); setProblems([]); setServerError(''); setMessage('');
     setTab('lines'); setMode('form');
   }
@@ -413,19 +415,29 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
                     <option value="open">Open (no limit)</option>
                   </select>
                 ), { req: true })}
-                {cell(order ? 'Order qty' : 'Total order qty', <b>{fmtNum(grandTotal)} pcs</b>, { title: order ? 'Qty of this order no.' : 'Sum of all order lines, worked out automatically' })}
+                {cell(order && !showAll ? 'Order qty' : 'Total order qty', <b>{fmtNum(grandTotal)} pcs</b>, { title: order && !showAll ? 'Qty of this order no.' : 'Sum of the order lines in the grid' })}
                 {cell('Max allowed', grandTotal > 0 ? maxAllowed : '—')}
               </div>
             </div>
 
             <div className="o-tabs" role="tablist">
-              {[['lines', order ? 'Order line' : `Order lines (${lines.length})`], ...(order ? [['flow', 'Costing & BOM']] : []), ['other', 'Other info']].map(([id, label]) => (
+              {[['lines', order && !showAll ? 'Order line' : `Order lines (${lines.length})`], ...(order ? [['flow', 'Costing & BOM']] : []), ['other', 'Other info']].map(([id, label]) => (
                 <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>
               ))}
             </div>
 
             {tab === 'lines' && (
               <>
+                {order && order.lines.length > 1 && (
+                  <div className="o-grid-switch">
+                    <span className="hint">{showAll
+                      ? `All ${order.lines.length} order nos. of this style are in the grid. Buyer PO, size range and qty can be changed for any of them; + adds a new one.`
+                      : `Showing ${focusLine?.orderNo}. This style has ${order.lines.length} order nos. in this entry.`}</span>
+                    <button type="button" className="tb tb-line" onClick={() => setShowAll(v => !v)}>
+                      {showAll ? `Show only ${focusLine?.orderNo}` : `Show all ${order.lines.length} order nos.`}
+                    </button>
+                  </div>
+                )}
                 <div className="grid-scroll">
                   <table className="og">
                     <thead>
@@ -452,7 +464,7 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
                         const range = l.sizeRangeId ? ranges[l.sizeRangeId] : null;
                         const preview = l.saved ? null : previews[previewIndex++];
                         return (
-                          <tr key={l.key} data-line={l.key}>
+                          <tr key={l.key} data-line={l.key} className={showAll && l.saved && l.id === focusLine?.id ? 'o-focus-row' : ''}>
                             <td className="c-act">
                               {l.saved
                                 ? <span className="lock" title="Saved line" aria-label="Saved line">
@@ -464,7 +476,10 @@ export default function OrderEntry({ active, onNotice, session, onGo, request })
                             </td>
                             <td>{l.saved ? fmtDate(l.lineDate)
                               : <DateInput className={b.lineDate ? 'bad' : ''} ariaLabel={`Date line ${i + 1}`} value={l.lineDate} onChange={v => setLine(l.key, { lineDate: v })} />}</td>
-                            <td className="order-no">{l.saved ? l.orderNo
+                            <td className="order-no">{l.saved
+                              ? (showAll && l.id !== focusLine?.id
+                                ? <button type="button" className="o-link order-no" title="Open this order no." onClick={() => setFocusId(l.id)}>{l.orderNo}</button>
+                                : l.orderNo)
                               : <span className="preview">{preview || (brandId ? '…' : 'Pick a brand')} {preview && <small>(on save)</small>}</span>}</td>
                             <td>{l.saved ? (l.dispatchMode === 'air' ? 'By air' : 'By sea')
                               : <select data-first className={`ci ${b.dispatchMode ? 'bad' : ''}`} aria-label={`Dispatch mode line ${i + 1}`} value={l.dispatchMode} onChange={e => setLine(l.key, { dispatchMode: e.target.value })}>

@@ -19,11 +19,10 @@ import { AppError } from '../../middleware/errors.js';
 export const ITEM_TYPES = ['fabric', 'trims', 'packing'];
 export const ITEM_NATURES = ['Main', 'Contrast', 'Lining', 'Interlining', 'Pocketing', 'Other'];
 
-// "2026-27": April 2026 to March 2027, so the second part is the next year
+// A plain year: 2026
 function checkYear(v) {
-  const m = /^(\d{4})-(\d{2})$/.exec(v);
-  if (!m) return 'Write the year like 2026-27.';
-  if ((Number(m[1]) + 1) % 100 !== Number(m[2])) return `${v} is not a valid year. After ${m[1]} comes ${m[1]}-${String((Number(m[1]) + 1) % 100).padStart(2, '0')}.`;
+  if (!/^\d{4}$/.test(v)) return 'Write the year like 2026.';
+  if (Number(v) < 2000 || Number(v) > 2100) return `${v} is not a valid year.`;
   return null;
 }
 
@@ -56,7 +55,7 @@ export const MASTERS = {
     table: 'years', feature: 'masters.basic', label: 'Year', order: 'priority NULLS LAST, name DESC',
     usage: '(SELECT COUNT(*) FROM costings x WHERE x.year_id = t.id)',
     fields: [
-      { key: 'name', column: 'name', label: 'Year', required: true, max: 7, unique: true, check: checkYear },
+      { key: 'name', column: 'name', label: 'Year', required: true, max: 10, unique: true, check: checkYear },
       { key: 'priority', column: 'priority', label: 'Priority', number: true, integer: true, uniqueAtEnd: true }
     ]
   },

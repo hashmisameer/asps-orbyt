@@ -26,6 +26,11 @@ function checkYear(v) {
   return null;
 }
 
+// HSN code: 4, 6 or 8 digits
+function checkHsn(v) {
+  return /^(\d{4}|\d{6}|\d{8})$/.test(v) ? null : `HSN ${v} should be 4, 6 or 8 digits.`;
+}
+
 export const MASTERS = {
   colour: {
     table: 'colours', feature: 'masters.basic', label: 'Colour', order: 'name',
@@ -65,6 +70,16 @@ export const MASTERS = {
     fields: [
       { key: 'name', column: 'name', label: 'Year', required: true, max: 10, unique: true, check: checkYear },
       { key: 'priority', column: 'priority', label: 'Priority', number: true, integer: true, uniqueAtEnd: true }
+    ]
+  },
+  // GST % of each HSN code: a PO line takes it from the item's HSN
+  hsn: {
+    table: 'hsn_codes', feature: 'masters.basic', label: 'HSN code', order: 'code',
+    usage: '(SELECT COUNT(*) FROM items x WHERE x.company_id = t.company_id AND x.hsn = t.code)',
+    fields: [
+      { key: 'code', column: 'code', label: 'HSN code', required: true, max: 8, unique: true, check: checkHsn },
+      { key: 'description', column: 'description', label: 'Description', max: 150 },
+      { key: 'gstRate', column: 'gst_rate', label: 'GST %', required: true, number: true, zeroOk: true, maxValue: 100 }
     ]
   },
   product_group: {
@@ -230,9 +245,11 @@ async function read(m, companyId, body, id = null, db = poolDb) {
     if (f.bool) { values[f.column] = v !== false && v !== 'false'; continue; }
     if (f.number) {
       if (empty && !f.required) { values[f.column] = null; continue; }
+      if (empty) { problems.push(f.label.toLowerCase()); continue; }
       v = Number(String(v ?? '').replace(/,/g, ''));
       if (!Number.isFinite(v) || v < 0 || (v === 0 && !f.zeroOk)) { problems.push(`${f.label.toLowerCase()} (a number above 0)`); continue; }
       if (f.integer && !Number.isInteger(v)) { problems.push(`${f.label.toLowerCase()} (a whole number)`); continue; }
+      if (f.maxValue !== undefined && v > f.maxValue) { problems.push(`${f.label.toLowerCase()} (${f.maxValue} or less)`); continue; }
     } else if (f.ref) {
       if (empty) { if (f.required) problems.push(f.label.toLowerCase()); else values[f.column] = null; continue; }
       const ok = (await db.query(`SELECT 1 FROM ${f.ref.table} WHERE id = $1 AND company_id = $2`, [Number(v), companyId])).rows.length;

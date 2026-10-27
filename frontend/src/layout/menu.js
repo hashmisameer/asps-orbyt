@@ -11,5 +11,6 @@ export const READY_SCREENS = {
   'masters.brand': 'brand',
   'masters.basic': 'basic',
   'masters.item_group': 'itemGroup',
-  'masters.item': 'item'
+  'masters.item': 'item',
+  'purchase.po': 'purchaseOrder'
 };

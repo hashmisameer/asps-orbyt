@@ -120,7 +120,7 @@ export async function getCompany(id) {
   const c = (await query(
     `SELECT id, code, name, gstin, address_line, city, state, pin, country,
             contact_name, contact_designation, contact_mobile, contact_email,
-            to_char(licence_valid_till, 'YYYY-MM-DD') AS licence_valid_till, max_users, status
+            to_char(licence_valid_till, 'YYYY-MM-DD') AS licence_valid_till, max_users, status, po_approval_limit
        FROM companies WHERE id = $1`, [id]))[0];
   if (!c) throw new AppError(404, 'Client not found.');
   const modRows = await query(
@@ -146,6 +146,7 @@ export async function getCompany(id) {
     contactName: c.contact_name || '', contactDesignation: c.contact_designation || '',
     contactMobile: c.contact_mobile || '', contactEmail: c.contact_email || '',
     licenceValidTill: c.licence_valid_till || '', maxUsers: c.max_users, status: c.status,
+    poApprovalLimit: Number(c.po_approval_limit || 0),
     adminUsername: admin?.username || '', usersUsed, modules, features, addons
   };
 }
@@ -160,7 +161,8 @@ function readDetails(body, isNew) {
     contactName: clean(body.contactName), contactDesignation: clean(body.contactDesignation),
     contactMobile: clean(body.contactMobile), contactEmail: clean(body.contactEmail),
     licenceValidTill: clean(body.licenceValidTill), maxUsers: Number(body.maxUsers),
-    status: clean(body.status) || 'active'
+    status: clean(body.status) || 'active',
+    poApprovalLimit: clean(body.poApprovalLimit) === '' ? 0 : Number(clean(body.poApprovalLimit).replace(/,/g, ''))
   };
   const problems = [];
   if (!d.name) problems.push('company name');
@@ -169,6 +171,7 @@ function readDetails(body, isNew) {
   if (!Number.isInteger(d.maxUsers) || d.maxUsers < 1) problems.push('max users (1 or more)');
   if (d.licenceValidTill && !/^\d{4}-\d{2}-\d{2}$/.test(d.licenceValidTill)) problems.push('a valid licence date');
   if (!['active', 'suspended'].includes(d.status)) problems.push('status');
+  if (!Number.isFinite(d.poApprovalLimit) || d.poApprovalLimit < 0) problems.push('PO approval limit (0 or more)');
   if (d.contactEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.contactEmail)) problems.push('a valid contact email');
   if (isNew) {
     d.code = clean(body.code).toUpperCase();
@@ -244,7 +247,7 @@ async function saveAccess(db, companyId, catalog, modules, features, addons) {
 
 const detailParams = (d) => [d.name, d.gstin || null, d.addressLine, d.city || null, d.state || null, d.pin || null, d.country,
   d.contactName, d.contactDesignation || null, d.contactMobile || null, d.contactEmail || null,
-  d.licenceValidTill || null, d.maxUsers, d.status];
+  d.licenceValidTill || null, d.maxUsers, d.status, d.poApprovalLimit];
 
 // Financial year running today (April to March), e.g. 2026-27
 function currentFinancialYear() {
@@ -265,8 +268,8 @@ export async function createCompany(owner, body) {
     const id = (await db.query(
       `INSERT INTO companies (name, gstin, address_line, city, state, pin, country,
                               contact_name, contact_designation, contact_mobile, contact_email,
-                              licence_valid_till, max_users, status, code, legal_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $1) RETURNING id`,
+                              licence_valid_till, max_users, status, po_approval_limit, code, legal_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $1) RETURNING id`,
       [...detailParams(d), d.code])).rows[0].id;
     const unitId = (await db.query(`INSERT INTO units (company_id, code, name) VALUES ($1, 'MAIN', 'Main unit') RETURNING id`, [id])).rows[0].id;
     const fy = currentFinancialYear();
@@ -301,8 +304,8 @@ export async function updateCompany(owner, id, body) {
     await db.query(
       `UPDATE companies SET name = $1, gstin = $2, address_line = $3, city = $4, state = $5, pin = $6, country = $7,
               contact_name = $8, contact_designation = $9, contact_mobile = $10, contact_email = $11,
-              licence_valid_till = $12, max_users = $13, status = $14, updated_at = now()
-        WHERE id = $15`, [...detailParams(d), id]);
+              licence_valid_till = $12, max_users = $13, status = $14, po_approval_limit = $15, updated_at = now()
+        WHERE id = $16`, [...detailParams(d), id]);
     await saveAccess(db, id, catalog, modules, features, addons);
 
     // Record only what changed, in words the owner can read later
@@ -321,7 +324,7 @@ export async function updateCompany(owner, id, body) {
       .map(code => ({ code, from: before.addons[code] || null, to: addons[code] || null }))
       .filter(c => (c.from?.paidTill || '') !== (c.to?.paidTill || '') || (c.from?.price ?? null) !== (c.to?.price ?? null));
     if (addonChanges.length) changes.addons = addonChanges;
-    for (const k of ['name', 'licenceValidTill', 'maxUsers', 'status']) {
+    for (const k of ['name', 'licenceValidTill', 'maxUsers', 'status', 'poApprovalLimit']) {
       if (String(before[k]) !== String(d[k])) changes[k] = { from: before[k], to: d[k] };
     }
     const otherDetails = ['gstin', 'addressLine', 'city', 'state', 'pin', 'country', 'contactName', 'contactDesignation', 'contactMobile', 'contactEmail']

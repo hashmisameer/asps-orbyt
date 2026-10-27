@@ -5,6 +5,7 @@ import ChangePassword from '../components/ChangePassword.jsx';
 import OrderEntry from '../screens/OrderEntry.jsx';
 import Costing from '../screens/Costing.jsx';
 import Bom from '../screens/Bom.jsx';
+import PurchaseOrder from '../screens/PurchaseOrder.jsx';
 import SimpleMaster from '../screens/SimpleMaster.jsx';
 import PartyMaster from '../screens/PartyMaster.jsx';
 import BrandMaster from '../screens/BrandMaster.jsx';
@@ -20,7 +21,8 @@ const SCREENS = {
   brand: { component: BrandMaster, title: 'Brand master', crumb: 'Masters › Brand master' },
   basic: { component: BasicMasters, title: 'Basic masters', crumb: 'Masters › Basic masters' },
   itemGroup: { component: SimpleMaster, props: { kind: 'item_group' }, title: 'Summary items', crumb: 'Masters › Item group' },
-  item: { component: SimpleMaster, props: { kind: 'item' }, title: 'Items', crumb: 'Masters › Item master' }
+  item: { component: SimpleMaster, props: { kind: 'item' }, title: 'Items', crumb: 'Masters › Item master' },
+  purchaseOrder: { component: PurchaseOrder, title: 'Purchase order', crumb: 'Purchase › Purchase order' }
 };
 
 const Icon = {
@@ -36,7 +38,7 @@ const Icon = {
 };
 
 // Screens built with the record layout (list -> form, chatter on the right) fill the page edge to edge
-const FLUSH_SCREENS = ['productCategory', 'orderEntry', 'costing', 'bom', 'party', 'brand', 'basic', 'itemGroup', 'item'];
+const FLUSH_SCREENS = ['productCategory', 'orderEntry', 'costing', 'bom', 'party', 'brand', 'basic', 'itemGroup', 'item', 'purchaseOrder'];
 const TILE_COLOURS = ['#0F766E', '#1D4ED8', '#B45309', '#7C3AED', '#BE123C', '#047857', '#0369A1', '#4D7C0F'];
 
 // App icons on Home (Odoo-style launcher): one picture and colour per module

@@ -10,7 +10,7 @@ import AccessEditor from './AccessEditor.jsx';
 const blank = {
   name: '', code: '', gstin: '', addressLine: '', city: '', state: '', pin: '', country: 'India',
   contactName: '', contactDesignation: '', contactMobile: '', contactEmail: '',
-  licenceValidTill: '', maxUsers: '10', status: 'active',
+  licenceValidTill: '', maxUsers: '10', status: 'active', poApprovalLimit: '0',
   adminUsername: 'admin', adminPassword: '', modules: [], features: [], addons: {}
 };
 
@@ -29,7 +29,7 @@ export default function ClientSetup({ id, catalog, onBack, onCreated }) {
   useEffect(() => {
     if (isNew) return;
     ownerApi(`/companies/${id}`)
-      .then(c => { const f = { ...c, addons: c.addons || {}, maxUsers: String(c.maxUsers) }; setForm(f); setSaved(f); })
+      .then(c => { const f = { ...c, addons: c.addons || {}, maxUsers: String(c.maxUsers), poApprovalLimit: String(c.poApprovalLimit ?? 0) }; setForm(f); setSaved(f); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [id, isNew]);
@@ -47,7 +47,7 @@ export default function ClientSetup({ id, catalog, onBack, onCreated }) {
         onCreated(r.id);
       } else {
         const c = await ownerApi(`/companies/${id}`, { method: 'PUT', body });
-        const f = { ...c, addons: c.addons || {}, maxUsers: String(c.maxUsers) };
+        const f = { ...c, addons: c.addons || {}, maxUsers: String(c.maxUsers), poApprovalLimit: String(c.poApprovalLimit ?? 0) };
         setForm(f); setSaved(f);
         setMessage('Saved. The client sees the change the next time they sign in or reload.');
       }
@@ -145,6 +145,9 @@ export default function ClientSetup({ id, catalog, onBack, onCreated }) {
             </label>
             <label className="f"><span>Max users <span className="req">*</span>{!isNew && <span className="hint"> · {form.usersUsed} in use</span>}</span>
               <input className="inp" inputMode="numeric" {...field('maxUsers')} onChange={e => set({ maxUsers: e.target.value.replace(/[^\d]/g, '') })} />
+            </label>
+            <label className="f" title="Used only when the function 'PO needs approval' is ticked for this client. 0 = every PO needs approval."><span>PO approval above (₹)</span>
+              <input className="inp" inputMode="numeric" {...field('poApprovalLimit')} onChange={e => set({ poApprovalLimit: e.target.value.replace(/[^\d]/g, '') })} />
             </label>
             {isNew ? (
               <>

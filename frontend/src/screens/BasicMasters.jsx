@@ -1,4 +1,4 @@
-// Basic masters: Colour, Size range, Product group, Product class, UOM, Year, Season and Currency on one screen.
+// Basic masters: Colour, Size range, Product group, Product class, Payment terms, UOM, HSN / GST, Year, Season and Currency on one screen.
 // Left: the five masters with a count. Right: the rows of the one picked, changed right in the table.
 // "+ Add a line" adds a row; Save (Ctrl+S) saves the whole list at once (all or nothing); Discard throws the changes away.
 // A row used in orders or costings can only be switched off (Active), not deleted.
@@ -22,6 +22,10 @@ const KINDS = [
   { id: 'uom', name: 'UOM', plural: 'units', hint: 'Units used on items, costing, BOM and purchase',
     cols: [{ key: 'code', label: 'Code', max: 10, upper: true, width: 140 }, { key: 'name', label: 'Name', max: 40 },
       { key: 'allowDecimals', label: 'Decimals allowed', yesNo: true, width: 170 }] },
+  { id: 'hsn', name: 'HSN / GST', plural: 'HSN codes', hint: 'GST % of each HSN code. A purchase order line takes it from the item\'s HSN',
+    cols: [{ key: 'code', label: 'HSN code', max: 8, integer: true, width: 160, placeholder: 'e.g. 96062100' },
+      { key: 'description', label: 'Description', max: 150, optional: true, placeholder: 'e.g. Buttons of plastic' },
+      { key: 'gstRate', label: 'GST %', number: true, width: 120, placeholder: 'e.g. 12' }] },
   { id: 'year', name: 'Year', plural: 'years', hint: 'e.g. 2026. Priority 1 shows first in every Year dropdown',
     cols: [{ key: 'name', label: 'Year', max: 4, integer: true, width: 220, placeholder: 'e.g. 2026' },
       { key: 'priority', label: 'Priority', number: true, integer: true, optional: true, distinct: true, width: 150, placeholder: '1 = top' }] },
@@ -39,6 +43,7 @@ const blankRow = (kind) => ({
 const fromServer = (r) => ({
   ...r, key: `s${r.id}`, dirty: false,
   ...(r.rateToInr === undefined ? {} : { rateToInr: String(r.rateToInr) }),
+  ...(r.gstRate === undefined ? {} : { gstRate: String(r.gstRate) }),
   ...(r.priority === undefined ? {} : { priority: r.priority === '' ? '' : String(r.priority) })
 });
 

@@ -75,7 +75,7 @@ export async function brandLinks(companyId, brandId) {
 
 // ---------- History ----------
 // entity in the audit log -> screen a user must be able to open to read it
-export const HISTORY_FEATURE = { order: 'order.entry', costing: 'order.costing', bom: 'order.bom', parties: 'masters.party', brands: 'masters.brand' };
+export const HISTORY_FEATURE = { order: 'order.entry', costing: 'order.costing', bom: 'order.bom', parties: 'masters.party', brands: 'masters.brand', po: 'purchase.po' };
 const TYPE = { initial: 'Initial', final: 'Final', actual: 'Actual' };
 
 function words(entity, action, d = {}, lineNos = {}) {
@@ -97,6 +97,14 @@ function words(entity, action, d = {}, lineNos = {}) {
     if (action === 'UPDATE') return `BOM saved · ${d.lines} item${d.lines === 1 ? '' : 's'}`;
     if (action === 'APPROVE') return 'Approved and locked';
     if (action === 'REOPEN') return 'Reopened for changes';
+  }
+  if (entity === 'po') {
+    const st = { open: 'Open', pending: 'waiting for approval' }[d.status];
+    if (action === 'CREATE') return `PO created · ${d.lines} item${d.lines === 1 ? '' : 's'}${st ? ` · ${st}` : ''}`;
+    if (action === 'UPDATE') return `PO saved · ${d.lines} item${d.lines === 1 ? '' : 's'}${st ? ` · ${st}` : ''}`;
+    if (action === 'APPROVE') return 'Approved';
+    if (action === 'REJECT') return `Rejected: ${d.reason || ''}`;
+    if (action === 'CANCEL') return `Cancelled${d.reason ? `: ${d.reason}` : ''}`;
   }
   if (action === 'CREATE') return 'Created';
   if (action === 'UPDATE') return d.active === false ? 'Saved · made inactive' : 'Saved';

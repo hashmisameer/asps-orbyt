@@ -60,6 +60,37 @@ export const MASTERS = {
       { key: 'priority', column: 'priority', label: 'Priority', number: true, integer: true, uniqueAtEnd: true }
     ]
   },
+  product_group: {
+    table: 'product_groups', feature: 'masters.basic', label: 'Product group', order: 'name',
+    usage: '(SELECT COUNT(*) FROM styles x WHERE x.product_group_id = t.id)',
+    fields: [
+      { key: 'name', column: 'name', label: 'Product group', required: true, upper: true, max: 60, unique: true }
+    ]
+  },
+  product_class: {
+    table: 'product_classes', feature: 'masters.basic', label: 'Product class', order: 'name',
+    usage: '(SELECT COUNT(*) FROM styles x WHERE x.product_class_id = t.id)',
+    fields: [
+      { key: 'name', column: 'name', label: 'Product class', required: true, upper: true, max: 60, unique: true }
+    ]
+  },
+  // Product category screen: one style (Style no. + description) with its group, class, season and year
+  style: {
+    table: 'styles', feature: 'masters.product_category', label: 'Style', order: 'code', nameColumn: 'code',
+    usage: '(SELECT COUNT(*) FROM orders x WHERE x.style_id = t.id) + (SELECT COUNT(*) FROM costings x WHERE x.style_id = t.id)',
+    fields: [
+      { key: 'code', column: 'code', label: 'Style no.', required: true, upper: true, max: 40, unique: true },
+      { key: 'name', column: 'name', label: 'Style description', required: true, upper: true, max: 150 },
+      { key: 'productGroupId', column: 'product_group_id', label: 'Product group', required: true, ref: { table: 'product_groups', label: 'name' } },
+      { key: 'productClassId', column: 'product_class_id', label: 'Product class', required: true, ref: { table: 'product_classes', label: 'name' } },
+      { key: 'seasonId', column: 'season_id', label: 'Season', required: true, ref: { table: 'seasons', label: 'name' } },
+      { key: 'yearId', column: 'year_id', label: 'Year', required: true, ref: { table: 'years', label: 'name', order: 'priority NULLS LAST, name DESC' } },
+      { key: 'brandId', column: 'brand_id', label: 'Brand', ref: { table: 'brands', label: "name || ' (' || initials || ')'" } },
+      { key: 'sizeRangeId', column: 'size_range_id', label: 'Size range', ref: { table: 'size_ranges', label: 'name' } },
+      { key: 'uomId', column: 'uom_id', label: 'UOM', ref: { table: 'uoms', label: "code || ' – ' || name" } },
+      { key: 'hsn', column: 'hsn', label: 'HSN code', upper: true, max: 12 }
+    ]
+  },
   season: {
     table: 'seasons', feature: 'masters.basic', label: 'Season', order: 'name',
     usage: '(SELECT COUNT(*) FROM costings x WHERE x.season_id = t.id)',
@@ -171,7 +202,7 @@ export async function list(m, companyId) {
   const refs = {};
   for (const f of m.fields.filter(x => x.ref)) {
     refs[f.key] = (await query(
-      `SELECT id, ${f.ref.label} AS label, is_active FROM ${f.ref.table} WHERE company_id = $1 ORDER BY 2`, [companyId]))
+      `SELECT id, ${f.ref.label} AS label, is_active FROM ${f.ref.table} WHERE company_id = $1 ORDER BY ${f.ref.order || '2'}`, [companyId]))
       .map(r => ({ id: String(r.id), label: r.label, isActive: r.is_active }));
   }
   return { rows: rows.map(r => toRow(m, r)), refs };

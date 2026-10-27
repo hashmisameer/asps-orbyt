@@ -6,6 +6,22 @@ import RecordList from '../components/RecordList.jsx';
 import { ControlPanel, StatusBar, Field, AllButton } from '../components/RecordBar.jsx';
 
 export const MASTER_SCREENS = {
+  // Product category screen = the style master (as in BlueKaktus); Product group / class come from Basic masters
+  style: {
+    title: 'Style', plural: 'styles', listTitle: 'Product category', feature: 'masters.product_category',
+    fields: [
+      { key: 'code', label: 'Style no.', required: true, upper: true, max: 40, hint: 'e.g. MS 0904T MAUVE TRS' },
+      { key: 'name', label: 'Style description', required: true, upper: true, max: 150, hint: 'e.g. TAIL PV TEX TRS' },
+      { key: 'productGroupId', label: 'Product group', required: true, ref: true, hint: 'Made in Basic masters › Product group' },
+      { key: 'productClassId', label: 'Product class', required: true, ref: true, hint: 'Made in Basic masters › Product class' },
+      { key: 'seasonId', label: 'Season', required: true, ref: true },
+      { key: 'yearId', label: 'Year', required: true, ref: true, defaultFirst: true, hint: 'Priority 1 year comes first' },
+      { key: 'brandId', label: 'Brand', ref: true, hideInList: true },
+      { key: 'sizeRangeId', label: 'Size range', ref: true, hideInList: true },
+      { key: 'uomId', label: 'UOM', ref: true, hideInList: true },
+      { key: 'hsn', label: 'HSN code', upper: true, max: 12, hideInList: true }
+    ]
+  },
   item_group: {
     title: 'Summary item', plural: 'summary items', feature: 'masters.item_group',
     fields: [
@@ -32,7 +48,11 @@ export const MASTER_SCREENS = {
   }
 };
 
-const emptyFor = (cfg) => ({ id: null, isActive: true, ...Object.fromEntries(cfg.fields.map(f => [f.key, ''])) });
+// A new record: empty fields; "defaultFirst" dropdowns start on their first choice (e.g. the priority 1 year)
+const emptyFor = (cfg, refs = {}) => ({
+  id: null, isActive: true,
+  ...Object.fromEntries(cfg.fields.map(f => [f.key, f.defaultFirst ? ((refs[f.key] || []).find(o => o.isActive)?.id || '') : '']))
+});
 const plural = (cfg) => cfg.plural[0].toUpperCase() + cfg.plural.slice(1);
 
 export default function SimpleMaster({ kind, active, session }) {
@@ -56,7 +76,14 @@ export default function SimpleMaster({ kind, active, session }) {
     return String(v);
   };
   // Dropdown lists need refs on the form too (e.g. New straight from the menu)
-  useEffect(() => { api(`/masters/${kind}`).then(r => setRefs(r.refs || {})).catch(() => {}); }, [kind]);
+  useEffect(() => {
+    api(`/masters/${kind}`).then(r => {
+      const rf = r.refs || {};
+      setRefs(rf);
+      // The first new record also gets its default choices (e.g. Year) once the lists are in
+      setForm(f => (f.id || dirty ? f : emptyFor(cfg, rf)));
+    }).catch(() => {});
+  }, [kind]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchRows({ search, filter }) {
     const r = await api(`/masters/${kind}`);
@@ -74,7 +101,7 @@ export default function SimpleMaster({ kind, active, session }) {
 
   function startNew() {
     if (dirty && !window.confirm('Discard the changes on this screen?')) return;
-    setForm(emptyFor(cfg)); setMessage(''); setError(''); setDirty(false); setMode('form');
+    setForm(emptyFor(cfg, refs)); setMessage(''); setError(''); setDirty(false); setMode('form');
   }
   function openRow(r) {
     if (dirty && !window.confirm('Discard the changes on this screen?')) return;
@@ -94,7 +121,7 @@ export default function SimpleMaster({ kind, active, session }) {
         : await api(`/masters/${kind}`, { method: 'POST', body: form });
       setForm(toForm({ ...form, ...saved }));
       setDirty(false);
-      setMessage(`${cfg.title} "${saved.name || saved.code}" saved.`);
+      setMessage(`${cfg.title} "${saved.code || saved.name}" saved.`);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -115,7 +142,7 @@ export default function SimpleMaster({ kind, active, session }) {
 
   if (mode === 'list') {
     return (
-      <RecordList title={plural(cfg)} active={active} state={listState} setState={setListState} highlightId={lastOpened}
+      <RecordList title={(cfg.listTitle || plural(cfg))} active={active} state={listState} setState={setListState} highlightId={lastOpened}
         onNew={allowed.includes('create') ? startNew : null}
         onOpen={(id, ids, r) => openRow(r)}
         placeholder={`Search ${cfg.plural}…`}
@@ -123,13 +150,13 @@ export default function SimpleMaster({ kind, active, session }) {
         filters={[{ id: 'active', label: 'Active only' }, { id: 'inactive', label: 'Inactive only' }]}
         fetchRows={fetchRows}
         columns={[
-          ...cfg.fields.map((f, i) => ({ label: f.label, num: f.number, cls: i === 0 ? 'o-strong' : '', cell: r => show(f, r[f.key]) })),
+          ...cfg.fields.filter(f => !f.hideInList).map((f, i) => ({ label: f.label, num: f.number, cls: i === 0 ? 'o-strong' : '', cell: r => show(f, r[f.key]) })),
           { label: 'Status', cell: r => <span className={`o-pill ${r.isActive ? 'ok' : 'no'}`}>{r.isActive ? 'Active' : 'Inactive'}</span> }
         ]} />
     );
   }
 
-  const title = form.id ? (form.name || form.code) : `New ${cfg.title.toLowerCase()}`;
+  const title = form.id ? (form.code && form.name ? `${form.code} · ${form.name}` : form.name || form.code) : `New ${cfg.title.toLowerCase()}`;
   const half = Math.ceil(cfg.fields.length / 2);
   const fieldOf = (f) => (
     <Field key={f.key} label={f.label} req={f.required} title={f.hint || undefined}>
@@ -149,7 +176,7 @@ export default function SimpleMaster({ kind, active, session }) {
 
   return (
     <div className="o-page no-chat">
-      <ControlPanel crumbs={[{ label: plural(cfg), onClick: backToList }, { label: title }]}>
+      <ControlPanel crumbs={[{ label: (cfg.listTitle || plural(cfg)), onClick: backToList }, { label: title }]}>
         <AllButton label={`All ${cfg.plural}`} onClick={backToList} />
         {form.id && allowed.includes('create') && <button type="button" className="tb" onClick={startNew}>New <kbd className="tb-kbd">F2</kbd></button>}
         {dirty && form.id && <span className="chip chip-amber">unsaved changes</span>}

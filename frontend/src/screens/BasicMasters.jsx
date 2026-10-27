@@ -1,4 +1,4 @@
-// Basic masters: Colour, Size range, UOM, Year, Season and Currency on one screen.
+// Basic masters: Colour, Size range, Product group, Product class, UOM, Year, Season and Currency on one screen.
 // Left: the five masters with a count. Right: the rows of the one picked, changed right in the table.
 // "+ Add a line" adds a row; Save (Ctrl+S) saves the whole list at once (all or nothing); Discard throws the changes away.
 // A row used in orders or costings can only be switched off (Active), not deleted.
@@ -13,6 +13,10 @@ const KINDS = [
     cols: [{ key: 'name', label: 'Colour name', max: 60 }] },
   { id: 'size_range', name: 'Size range', plural: 'size ranges', hint: 'Sizes show as boxes in Order entry, in this order',
     cols: [{ key: 'name', label: 'Size range', max: 40, width: 200 }, { key: 'sizes', label: 'Sizes (in order)', sizes: true }] },
+  { id: 'product_group', name: 'Product group', plural: 'product groups', hint: 'Picked on Product category (style), e.g. TROUSER, SHIRT',
+    cols: [{ key: 'name', label: 'Product group', max: 60, upper: true }] },
+  { id: 'product_class', name: 'Product class', plural: 'product classes', hint: 'Picked on Product category (style), e.g. MEN\'S TROUSER',
+    cols: [{ key: 'name', label: 'Product class', max: 60, upper: true }] },
   { id: 'uom', name: 'UOM', plural: 'units', hint: 'Units used on items, costing, BOM and purchase',
     cols: [{ key: 'code', label: 'Code', max: 10, upper: true, width: 140 }, { key: 'name', label: 'Name', max: 40 },
       { key: 'allowDecimals', label: 'Decimals allowed', yesNo: true, width: 170 }] },

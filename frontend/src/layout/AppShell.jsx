@@ -12,6 +12,7 @@ import BasicMasters from '../screens/BasicMasters.jsx';
 
 // Built screens: id -> component, tab title and breadcrumb
 const SCREENS = {
+  productCategory: { component: SimpleMaster, props: { kind: 'style' }, title: 'Product category', crumb: 'Order › Product category' },
   orderEntry: { component: OrderEntry, title: 'Order entry', crumb: 'Order › Order entry' },
   costing: { component: Costing, title: 'Costing', crumb: 'Order › Costing' },
   bom: { component: Bom, title: 'BOM', crumb: 'Order › BOM' },
@@ -35,7 +36,7 @@ const Icon = {
 };
 
 // Screens built with the record layout (list -> form, chatter on the right) fill the page edge to edge
-const FLUSH_SCREENS = ['orderEntry', 'costing', 'bom', 'party', 'brand', 'basic', 'itemGroup', 'item'];
+const FLUSH_SCREENS = ['productCategory', 'orderEntry', 'costing', 'bom', 'party', 'brand', 'basic', 'itemGroup', 'item'];
 const TILE_COLOURS = ['#0F766E', '#1D4ED8', '#B45309', '#7C3AED', '#BE123C', '#047857', '#0369A1', '#4D7C0F'];
 
 // App icons on Home (Odoo-style launcher): one picture and colour per module
